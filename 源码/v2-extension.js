@@ -1789,15 +1789,15 @@ function tailRGB(img) {
 function drawSealTail(t, p, m, bob) {
   const img = equippedImg();
   const [r0, g0, b0] = tailRGB(m ? img : null);
-  const wag = Math.sin(t / 190) * .5 + (V && V.dashT > 0 ? Math.sin(t / 60) * .25 : 0);  // 与摆尾同相位，冲刺时甩更快
+  const wag = Math.sin(t / 190) * .6 + (V && V.dashT > 0 ? Math.sin(t / 60) * .3 : 0);   // 与摆尾同相位，冲刺时甩更快
   const k = m ? (p.r * 2.35) / m.size : 0;
-  const ax = m ? -m.size * .14 * k : -p.r * .33;          // 尾根：身体后下方
-  const ay = (m ? m.size * .30 * k : p.r * .62) + bob;
-  const len = (m ? m.size * .34 * k : p.r * .95);         // 尾长 ≈ 半个身位
-  const w = p.r * .20;                                     // 尾根半宽
+  const ax = m ? -m.size * .30 * k : -p.r * .72;          // 尾根：身体后下缘之外（贴图后 30% 处）
+  const ay = (m ? m.size * .34 * k : p.r * .70) + bob;
+  const len = (m ? m.size * .50 * k : p.r * 1.25);        // 尾长 ≈ 0.6 身位，确保伸出贴图外
+  const w = p.r * .24;                                     // 尾根半宽
   ctx.save();
   ctx.translate(ax, ay);
-  ctx.rotate(.55 + wag * .38);                             // 整体朝后下方，随 wag 摆
+  ctx.rotate(.75 + wag * .45);                             // 整体朝后下方，随 wag 摆
   const grad = ctx.createLinearGradient(0, 0, 0, len);
   grad.addColorStop(0, 'rgb(' + r0 + ',' + g0 + ',' + b0 + ')');
   grad.addColorStop(1, 'rgb(' + Math.max(0, r0 - 26) + ',' + Math.max(0, g0 - 26) + ',' + Math.max(0, b0 - 26) + ')');
@@ -1850,7 +1850,7 @@ function drawPlayerV2(t) {  const p = player;
   }
   if (performance.now() < invincibleUntil && Math.floor(t / 120) % 2 === 0) ctx.globalAlpha = 0.4;
   /* M2.5 视觉：动态尾巴 —— 原图建模不可改动，尾巴为渲染层新增；
-     画在贴图之前（身后），颜色自动采样当前皮肤，摆动相位与摆尾扭切一致 */
+     画在贴图之前（身后），锚点在身体后下缘之外，确保尾身露出贴图外，颜色自动采样当前皮肤 */
   drawSealTail(t, p, m, bob);
   if (m) {
     const k = (p.r * 2.35) / m.size;
@@ -1858,9 +1858,10 @@ function drawPlayerV2(t) {  const p = player;
     if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
     ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
     ctx.shadowBlur = 0;
-    /* 张嘴：贴图嘴部位置画一个深色椭圆口腔 + 上下颚高光，位置随体型缩放 */
+    /* 张嘴：贴图嘴部位置画一个深色椭圆口腔 + 上下颚高光
+       位置：头部前方、眼睛正下方一点（x 前方 0.30，y +0.03），随体型缩放 */
     if (chomp > 0) {
-      const mx = m.size * .30 * k, my = -m.size * .04 * k;      // 相对贴图中心的嘴部偏移
+      const mx = m.size * .30 * k, my = m.size * .03 * k;
       ctx.save();
       ctx.translate(mx, my + bob);
       ctx.fillStyle = 'rgba(60,20,20,.85)';
