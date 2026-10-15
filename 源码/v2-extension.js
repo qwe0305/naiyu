@@ -1743,8 +1743,9 @@ const ZODIAC_IMGS = [];
 })();
 const _drawFish = drawFish;
 drawFish = function (f, t) {
-  /* M3：tier 3（第二大、除 Boss 外）整体换装 —— 每条鱼随机固定一只生肖，绘制布局与原版完全一致 */
-  if (f && f.tier === 3 && ZODIAC_IMGS.length && ZODIAC_IMGS[0].complete) {
+  /* M3：生肖换装对象改为 tier 1（比蛋大一档的小型鱼）—— 体型「比蛋大一点点」；
+     tier 3 恢复原版奶龙。每条鱼随机固定一只生肖，绘制布局与原版完全一致 */
+  if (f && f.tier === 1 && ZODIAC_IMGS.length && ZODIAC_IMGS[0].complete) {
     ctx.save(); ctx.translate(-cam.x, -cam.y);
     const r = f.r, y = f.y + Math.sin(t / 400 + f.wobble) * f.wobbleAmp * .15;
     const col = dangerColor(f);
