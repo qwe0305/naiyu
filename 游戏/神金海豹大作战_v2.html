@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>神金海豹大作战 · V0.4</title>
+<title>神金海豹大作战 · V0.5</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { width:100%; height:100%; overflow:hidden; background:#06283d; touch-action:none;
@@ -39,6 +39,13 @@
   #diffRow .btn[data-d="easy"] { background:linear-gradient(180deg,#8effa1,#3ecf63); }
   #title-seal { width:150px; margin-bottom:10px; filter:drop-shadow(0 6px 12px rgba(0,0,0,.4)); }
 </style>
+<script src="wb-cloud-sdk.js"></script>
+<script>
+// CDN 加载失败时的兜底（本地文件已随包部署，正常情况下直接可用）
+if (typeof WorkBuddyCloud === 'undefined') {
+  document.write('<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"><\/script>');
+}
+</script>
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -525,6 +532,70 @@ html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavi
 #normalBtn{background:linear-gradient(180deg,#ffe066,#ffbf2e);color:#5a4200}
 #endlessBtn{background:linear-gradient(180deg,#ffe8a3,#ffc94a);color:#5a4200}
 #skinBtn2{background:linear-gradient(180deg,#fff0a8,#ffd54a);color:#6b4d00}
+#lbBtn{background:linear-gradient(180deg,#ffd98a,#ffb02e);color:#5a4200}
+/* 登录徽章 */
+#v2login{position:absolute;top:16px;left:16px;padding:8px 16px;font-size:14px;font-weight:bold;border:none;border-radius:22px;
+  cursor:pointer;background:rgba(255,255,255,.14);color:#cfe8f5;border:1px solid rgba(255,255,255,.3);
+  z-index:12;transition:transform .12s;letter-spacing:.5px}
+#v2login.on{background:linear-gradient(180deg,#4ddb8a,#2fbf68);color:#04331b;border-color:transparent}
+#v2login:active{transform:scale(.95)}
+#v2login .lgav{width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:-6px;margin-right:5px;background:#04331b}
+/* 个人资料面板 */
+#profOv .profCard{width:min(360px,88vw);background:rgba(10,30,50,.55);border:1px solid rgba(255,255,255,.16);
+  border-radius:18px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:12px}
+#profOv .profAva{width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid #ffd54a;cursor:pointer;
+  background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:40px;overflow:hidden}
+#profOv .profAvaHint{font-size:11px;color:#9fc0d4}
+#profOv input.profName{width:200px;padding:9px 12px;font-size:15px;font-weight:bold;text-align:center;border-radius:12px;
+  border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#eaf7ff;outline:none}
+#profOv .profStats{width:100%;display:flex;flex-direction:column;gap:6px}
+#profOv .profStats .srow{display:flex;justify-content:space-between;font-size:14px;color:#cfe8f5;
+  background:rgba(255,255,255,.06);border-radius:10px;padding:8px 14px}
+#profOv .profStats b{color:#ffd54a}
+#profOv .profBtns{display:flex;gap:10px;margin-top:4px}
+#profOv .profBtns .v2btn{margin-top:0}
+#profOv #profLogout{background:linear-gradient(180deg,#ff9d9d,#f26b6b);color:#4a0808}
+/* 登录/注册弹窗 */
+#loginOv .loginCard{width:min(340px,88vw);background:rgba(10,30,50,.55);border:1px solid rgba(255,255,255,.16);
+  border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.login-tabs{display:flex;gap:10px}
+.login-tab{flex:1;padding:10px 0;font-size:15px;font-weight:800;border:none;border-radius:12px;cursor:pointer;
+  background:rgba(255,255,255,.12);color:#cfe8f5;border:1px solid rgba(255,255,255,.22);transition:transform .12s}
+.login-tab.on{background:linear-gradient(180deg,#ffd54a,#ffb02e);color:#3d2a00;border-color:transparent}
+.login-tab:active{transform:scale(.96)}
+.loginInp{width:100%;box-sizing:border-box;padding:11px 14px;font-size:16px;border-radius:12px;border:1px solid rgba(255,255,255,.28);
+  background:rgba(255,255,255,.1);color:#eaf7ff;outline:none}
+.loginInp::placeholder{color:#7fa5bb}
+.loginInp:focus{border-color:#ffd54a}
+.loginCode{display:flex;gap:8px}
+.loginCode .loginInp{flex:1}
+.loginCodeBtn{flex-shrink:0;padding:0 14px;font-size:13px;font-weight:700;border:none;border-radius:12px;cursor:pointer;
+  background:rgba(255,255,255,.14);color:#cfe8f5;border:1px solid rgba(255,255,255,.28)}
+.loginCodeBtn:disabled{opacity:.55}
+.loginErr{min-height:16px;font-size:12px;color:#ff9d9d;text-align:center}
+#loginOv .v2btn{width:100%;margin-top:0}
+#loginOv #liClose{margin-top:4px;background:rgba(255,255,255,.14);color:#cfe8f5}
+/* 排行榜弹窗 */
+.lb-tabs{display:flex;gap:10px;justify-content:center;margin-bottom:14px;width:min(420px,88vw)}
+.lb-tab{flex:1;padding:11px 0;font-size:15px;font-weight:800;border:none;border-radius:14px;cursor:pointer;
+  background:rgba(255,255,255,.12);color:#cfe8f5;border:1px solid rgba(255,255,255,.22);transition:transform .12s}
+.lb-tab.on{background:linear-gradient(180deg,#ffd54a,#ffb02e);color:#3d2a00;border-color:transparent}
+.lb-tab:active{transform:scale(.95)}
+.lb-list{width:min(420px,88vw);max-height:46vh;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:6px}
+.lb-head,.lb-row{display:grid;grid-template-columns:1.2fr 2fr 1.6fr 1.8fr;align-items:center;gap:6px;
+  padding:9px 10px;font-size:14px;text-align:center}
+.lb-head{color:#9fc0d4;font-size:12px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.12)}
+.lb-row{border-bottom:1px solid rgba(255,255,255,.06)}
+.lb-row:last-child{border-bottom:none}
+.lb-row.top{background:rgba(255,213,74,.08)}
+.lb-rank{font-weight:900}
+.lb-name{font-weight:700;color:#eaf7ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-val{font-weight:900;color:#ffd54a}
+.lb-boss{font-size:12px;color:#9fc0d4}
+.lb-empty{padding:26px 10px;color:#9fc0d4;font-size:14px}
+.lb-me{margin-top:12px;font-size:12px;color:#9fc0d4;width:min(420px,88vw);text-align:center}
+
 #diffPanel .diffTitle{font-size:13px;font-weight:800;color:#ffd54a;letter-spacing:1px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
 #diffPanel{display:none;flex-direction:column;gap:8px;margin-top:12px;align-items:center;position:relative;z-index:2}
 #diffPanel.open{display:flex}
@@ -600,6 +671,214 @@ let S = (function () {
   catch (e) { return { coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 }; }
 })();
 const saveS = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch (e) { } };
+
+/* ------------------------------------------------------------ 2.5 云服务：登录 + 排行榜 */
+const CLOUD = (typeof WorkBuddyCloud !== 'undefined' && WorkBuddyCloud.createWorkBuddyCloud)
+  ? WorkBuddyCloud.createWorkBuddyCloud({
+      endpoint: 'https://shenjin-seal.app.workbuddy.host',
+      oauthRelayBaseUrl: 'https://www.workbuddy.cn/v2/as/genie-baas/oauth',
+      publishableKey: 'wbpk_Ix6GMyqXuLEc6KGYCRI2H9_63rfvkMY6hAJdzxxaGJfGIc9anWHl1OY'
+    })
+  : null;
+
+let cloudUser = null;   // { name, avatarUrl } 当前登录用户（手机号）
+let lbOv = null;        // 排行榜弹窗 DOM
+let profOv = null;      // 个人资料弹窗 DOM
+
+// 本地资料缓存（头像 dataURL + 名称，登录后立即显示，云端为准）
+const PKEY = 'sealV2Profile';
+let P = (function () {
+  try { return Object.assign({ name: '', avatar: '' }, JSON.parse(localStorage.getItem(PKEY) || '{}')); }
+  catch (e) { return { name: '', avatar: '' }; }
+})();
+const saveP = () => { try { localStorage.setItem(PKEY, JSON.stringify(P)); } catch (e) { } };
+
+function myDisplayName() { return (P.name || (cloudUser && cloudUser.name) || '玩家').slice(0, 12); }
+function myAvatar() { return P.avatar || (cloudUser && cloudUser.avatarUrl) || ''; }
+
+async function refreshCloudUser() {
+  if (!CLOUD) return;
+  try {
+    const { data: s, error } = await CLOUD.auth.getSession();
+    if (error || !s) { cloudUser = null; return; }
+    const u = s.user || {};
+    cloudUser = { id: u.id, name: u.name || '玩家', avatarUrl: u.avatarUrl || null };
+    // 云端若返回了昵称/头像而本地还没有，就先采用
+    if (u.name && !P.name) { P.name = u.name; saveP(); }
+    if (u.avatarUrl && !P.avatar) { P.avatar = u.avatarUrl; saveP(); }
+  } catch (e) { cloudUser = null; }
+}
+
+// 登录弹窗（手机号 + 密码，游戏内完成，不跳转外站）
+let loginOv = null;      // 登录/注册弹窗 DOM
+let pendingOtp = null;   // 已发送验证码的上下文 { phone, verificationId, isExistingUser }
+let otpTimer = null;     // 重发倒计时
+
+async function cloudLogin() {
+  if (!CLOUD) { toast('云服务未加载，请联网后重试'); return; }
+  openLogin();
+}
+
+function openLogin() {
+  if (loginOv) { loginOv.classList.remove('hidden'); document.documentElement.classList.add('v2scroll'); return; }
+  const ov = el('div', 'loginOv', 'v2ov hidden');
+  ov.id = 'loginOv';
+  ov.innerHTML = '<h2>📱 账号登录</h2><div class="sub">手机号登录 · 全程在游戏内完成，不会跳转</div>' +
+    '<div class="loginCard">' +
+    '  <div class="login-tabs"><button class="login-tab on" data-t="in">登录</button><button class="login-tab" data-t="up">注册</button></div>' +
+    '  <input class="loginInp" id="liPhone" type="tel" maxlength="11" placeholder="手机号">' +
+    '  <input class="loginInp" id="liPwd" type="password" placeholder="密码">' +
+    '  <div class="loginCode" id="liCodeRow" style="display:none">' +
+    '    <input class="loginInp" id="liCode" type="tel" maxlength="6" placeholder="短信验证码">' +
+    '    <button class="loginCodeBtn" id="liSend" type="button">获取验证码</button>' +
+    '  </div>' +
+    '  <div class="loginErr" id="liErr"></div>' +
+    '  <button class="v2btn" id="liGo">登录</button>' +
+    '  <button class="v2btn" id="liClose">返回</button>' +
+    '</div>';
+  document.body.appendChild(ov);
+  loginOv = ov;
+  ov.addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+  document.documentElement.classList.add('v2scroll');
+
+  const phone = ov.querySelector('#liPhone');
+  const pwd = ov.querySelector('#liPwd');
+  const codeRow = ov.querySelector('#liCodeRow');
+  const code = ov.querySelector('#liCode');
+  const sendBtn = ov.querySelector('#liSend');
+  const errBox = ov.querySelector('#liErr');
+  const goBtn = ov.querySelector('#liGo');
+  let mode = 'in';   // 'in' 登录 / 'up' 注册
+
+  const err = m => { errBox.textContent = m || ''; };
+  const switchTab = t => {
+    mode = t;
+    ov.querySelectorAll('.login-tab').forEach(x => x.classList.toggle('on', x.dataset.t === t));
+    codeRow.style.display = (t === 'up') ? 'flex' : 'none';
+    goBtn.textContent = (t === 'up') ? '注册并登录' : '登录';
+    err('');
+  };
+  ov.querySelectorAll('.login-tab').forEach(t => t.onclick = () => switchTab(t.dataset.t));
+  ov.querySelector('#liClose').onclick = () => { ov.classList.add('hidden'); document.documentElement.classList.remove('v2scroll'); };
+  phone.addEventListener('input', () => err(''));
+
+  // 发送验证码（注册用）
+  sendBtn.onclick = async () => {
+    const p = phone.value.trim();
+    if (!/^1\d{10}$/.test(p)) { err('请输入正确的 11 位手机号'); return; }
+    sendBtn.disabled = true;
+    try {
+      const sent = await CLOUD.auth.sendOtp({ phone: p });
+      if (sent.error) { err(sent.error.message || '验证码发送失败'); return; }
+      pendingOtp = { phone: p, verificationId: sent.data.verificationId, isExistingUser: sent.data.isExistingUser };
+      err('验证码已发送，请查收短信');
+      let n = 60;
+      otpTimer = setInterval(() => {
+        n--;
+        if (n <= 0) { clearInterval(otpTimer); sendBtn.disabled = false; sendBtn.textContent = '重新获取'; }
+        else { sendBtn.textContent = n + 's'; }
+      }, 1000);
+    } catch (e) { err('验证码发送失败，请重试'); }
+    finally { if (!otpTimer) sendBtn.disabled = false; }
+  };
+
+  // 登录 / 注册
+  goBtn.onclick = async () => {
+    const p = phone.value.trim();
+    const pw = pwd.value;
+    if (!/^1\d{10}$/.test(p)) { err('请输入正确的 11 位手机号'); return; }
+    goBtn.disabled = true;
+    try {
+      if (mode === 'in') {
+        if (!pw) { err('请输入密码'); return; }
+        const { data, error } = await CLOUD.auth.signInWithPassword({ phone: p, password: pw });
+        if (error) { err('登录失败：' + (error.message || '手机号或密码错误')); return; }
+      } else {
+        if (!pendingOtp || pendingOtp.phone !== p) { err('请先获取验证码'); return; }
+        if (!code.value.trim()) { err('请输入短信验证码'); return; }
+        if (!pw || pw.length < 6) { err('请设置至少 6 位密码'); return; }
+        const completed = await CLOUD.auth.verifyOtp({
+          phone: pendingOtp.phone,
+          verificationId: pendingOtp.verificationId,
+          isExistingUser: pendingOtp.isExistingUser,
+          token: code.value.trim(),
+          password: pw,
+        });
+        if (completed.error) { err(completed.error.message || '注册失败'); return; }
+      }
+      // 成功：刷新会话并进入
+      pendingOtp = null;
+      if (otpTimer) { clearInterval(otpTimer); otpTimer = null; }
+      await refreshCloudUser();
+      renderLoginBadge();
+      ov.classList.add('hidden');
+      document.documentElement.classList.remove('v2scroll');
+      toast(mode === 'in' ? '登录成功' : '注册成功，已自动登录');
+    } catch (e) { err('操作失败，请重试'); }
+    finally { goBtn.disabled = false; }
+  };
+}
+
+async function cloudLogout() {
+  if (!CLOUD) return;
+  try { await CLOUD.auth.signOut(); } catch (e) { }
+  cloudUser = null;
+  renderLoginBadge();
+}
+
+// 无尽成绩上报（已登录才上报；每玩家只保留历史最佳）
+async function reportEndlessScore(star, surviveSec, bossProgress) {
+  if (!CLOUD || !cloudUser) return;
+  try {
+    const { data: s } = await CLOUD.auth.getSession();
+    if (!s) return;
+    const name = myDisplayName();
+    const avatar = myAvatar();
+    // 查现有记录
+    const { data: rows } = await CLOUD.database.from('endless_leaderboard')
+      .select('id, best_star, best_survive, owner_name, avatar_url').eq('owner_id', s.user.id).maybeSingle();
+    if (rows) {
+      // 已存在：取历史最高更新（名称/头像每次都同步）
+      const upd = { owner_name: name, avatar_url: avatar };
+      if (star > (rows.best_star || 0)) upd.best_star = star;
+      if (surviveSec > (rows.best_survive || 0)) upd.best_survive = surviveSec;
+      if (star >= (rows.best_star || 0)) upd.boss_progress = bossProgress;
+      await CLOUD.database.from('endless_leaderboard').update(upd).eq('id', rows.id);
+    } else {
+      // 新玩家：插入（owner_id 由 DEFAULT auth.uid() 填）
+      await CLOUD.database.from('endless_leaderboard').insert({
+        owner_name: name, avatar_url: avatar, best_star: star, best_survive: surviveSec, boss_progress: bossProgress
+      });
+    }
+  } catch (e) { /* 上报失败静默，不影响游戏 */ }
+}
+
+// 读取排行榜（公开读）
+async function fetchLeaderboard(kind) {
+  if (!CLOUD) return [];
+  try {
+    const col = kind === 'star' ? 'best_star' : 'best_survive';
+    const { data, error } = await CLOUD.database.from('endless_leaderboard')
+      .select('owner_name, avatar_url, best_star, best_survive, boss_progress')
+      .order(col, { ascending: false })
+      .limit(50);
+    if (error) return [];
+    return data || [];
+  } catch (e) { return []; }
+}
+
+function renderLoginBadge() {
+  const e = document.getElementById('v2login');
+  if (!e) return;
+  if (cloudUser) {
+    const av = myAvatar();
+    e.innerHTML = (av ? '<img class="lgav" src="' + av + '">' : '👤') + ' ' + myDisplayName();
+    e.classList.add('on');
+  } else {
+    e.innerHTML = '🔒 手机号登录';
+    e.classList.remove('on');
+  }
+}
 
 /* ------------------------------------------------------------ 3. 皮肤 */
 const RARE = { 1: '普通', 2: '稀有', 3: '史诗', 4: '传说' };
@@ -683,7 +962,7 @@ function newV() {
     endless: { star: 0, round: 0, roundDone: 0, lastPick: -1, active: false, pendingWave: 0, nextWaveAt: 0 },
     bullets: [], waves: [], snakes: [], parts: [],
     prevScore: 0, prevLives: (typeof lives === 'number' ? lives : 3),
-    hurtFlash: 0
+    hurtFlash: 0, surviveT: 0
   };
 }
 newV();
@@ -876,7 +1155,11 @@ document.getElementById('setBack').onclick = () => setOv.classList.add('hidden')
   const normalBtn = el('button', 'normalBtn', 'mbtn', '▶ 普通游戏');
   const endlessBtn = el('button', 'endlessBtn', 'mbtn', '∞ 无尽模式');
   const skinBtn2 = el('button', 'skinBtn2', 'mbtn', '◉ 皮肤商店');
-  menu.appendChild(normalBtn); menu.appendChild(endlessBtn); menu.appendChild(skinBtn2);
+  const lbBtn = el('button', 'lbBtn', 'mbtn', '🏆 排行榜');
+  menu.appendChild(normalBtn); menu.appendChild(endlessBtn); menu.appendChild(skinBtn2); menu.appendChild(lbBtn);
+  // 登录徽章（右上角）
+  const loginBadge = el('button', 'v2login', null, '🔒 手机号登录');
+  startScreen.appendChild(loginBadge);
   const panel = el('div', 'diffPanel');
   const panelTitle = el('div', 'diffTitle', null, '选择难度');
   panel.appendChild(panelTitle);
@@ -914,11 +1197,200 @@ document.getElementById('setBack').onclick = () => setOv.classList.add('hidden')
     });
   });
   skinBtn2.onclick = () => { renderShop(); shop.classList.remove('hidden'); };
+  // 登录 / 排行榜（登录后点徽章 → 个人资料面板）
+  loginBadge.onclick = () => { cloudUser ? openProfile() : cloudLogin(); };
+  lbBtn.onclick = () => openLeaderboard();
+  renderLoginBadge();
   // 点击面板外收起难度面板
   startScreen.addEventListener('click', e => {
     if (!panel.contains(e.target) && e.target !== normalBtn && e.target !== endlessBtn) panel.classList.remove('open');
   });
 })();
+
+/* ---- 个人资料面板 ------------------------------------------------------- */
+// 选图 → 居中裁剪 96×96 → JPEG dataURL（排行榜公开读，直接存库即可显示）
+function pickAvatar() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = c.height = 96;
+          const g = c.getContext('2d');
+          const s = Math.min(img.width, img.height);
+          g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 96, 96);
+          P.avatar = c.toDataURL('image/jpeg', .82);
+          saveP();
+          renderLoginBadge();
+          const a = profOv && profOv.querySelector('.profAva');
+          if (a) { a.innerHTML = ''; a.style.backgroundImage = 'url(' + P.avatar + ')'; a.style.backgroundSize = 'cover'; }
+          toast('头像已更新，记得保存资料');
+        } catch (e) { toast('图片处理失败，换一张试试'); }
+      };
+      img.src = ev.target.result;
+    };
+    rd.readAsDataURL(f);
+  };
+  inp.click();
+}
+
+// 保存资料：写本地缓存 + 同步云端排行榜行（无行则建）
+async function saveProfile() {
+  const nameEl = profOv && profOv.querySelector('#profName');
+  if (nameEl) P.name = (nameEl.value || '').trim().slice(0, 12);
+  saveP();
+  renderLoginBadge();
+  if (!CLOUD || !cloudUser) { toast('资料已保存'); closeProfile(); return; }
+  try {
+    const { data: s } = await CLOUD.auth.getSession();
+    if (!s) { toast('登录已过期，请重新登录'); return; }
+    const { data: rows } = await CLOUD.database.from('endless_leaderboard')
+      .select('id').eq('owner_id', s.user.id).maybeSingle();
+    const payload = { owner_name: myDisplayName(), avatar_url: myAvatar() };
+    if (rows) await CLOUD.database.from('endless_leaderboard').update(payload).eq('id', rows.id);
+    else await CLOUD.database.from('endless_leaderboard')
+      .insert(Object.assign(payload, { best_star: 0, best_survive: 0, boss_progress: 0 }));
+    toast('资料已保存并同步到排行榜');
+  } catch (e) { toast('云端同步失败，本地已保存'); }
+  closeProfile();
+}
+
+function closeProfile() {
+  if (profOv) profOv.classList.add('hidden');
+  document.documentElement.classList.remove('v2scroll');
+}
+
+async function openProfile() {
+  if (!cloudUser) { cloudLogin(); return; }
+  if (profOv) {
+    profOv.classList.remove('hidden');
+    document.documentElement.classList.add('v2scroll');
+    refreshProfileStats();
+    return;
+  }
+  const ov = el('div', 'profOv', 'v2ov hidden');
+  ov.id = 'profOv';
+  ov.innerHTML = '<h2>👤 我的资料</h2>' +
+    '<div class="profCard">' +
+    '  <div class="profAva" id="profAva"></div>' +
+    '  <div class="profAvaHint">点头像更换（可从手机相册选图）</div>' +
+    '  <input class="profName" id="profName" maxlength="12" placeholder="输入名称（12 字以内）">' +
+    '  <div class="profStats" id="profStats">加载中…</div>' +
+    '  <div class="profBtns">' +
+    '    <button class="v2btn" id="profSave">保存</button>' +
+    '    <button class="v2btn" id="profLogout">退出登录</button>' +
+    '    <button class="v2btn" id="profClose">返回</button>' +
+    '  </div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  profOv = ov;
+  const ava = ov.querySelector('#profAva');
+  const paintAva = () => {
+    const a = myAvatar();
+    if (a) { ava.innerHTML = ''; ava.style.backgroundImage = 'url(' + a + ')'; ava.style.backgroundSize = 'cover'; }
+    else { ava.style.backgroundImage = 'none'; ava.textContent = '🦭'; }
+  };
+  paintAva();
+  ov.querySelector('#profName').value = P.name || cloudUser.name || '';
+  ava.onclick = pickAvatar;
+  ov.querySelector('#profSave').onclick = saveProfile;
+  ov.querySelector('#profClose').onclick = closeProfile;
+  ov.querySelector('#profLogout').onclick = async () => { await cloudLogout(); closeProfile(); };
+  ov.addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+  document.documentElement.classList.add('v2scroll');
+  refreshProfileStats();
+}
+
+// 战绩 + 排名（表小，直接全量取回本地算排名）
+async function refreshProfileStats() {
+  const box = profOv && profOv.querySelector('#profStats');
+  if (!box || !CLOUD) return;
+  box.innerHTML = '<div class="srow">加载中…</div>';
+  let mine = null, all = [];
+  try {
+    const { data: s } = await CLOUD.auth.getSession();
+    if (!s) { box.innerHTML = '<div class="srow">登录已过期，请重新登录</div>'; return; }
+    const { data } = await CLOUD.database.from('endless_leaderboard')
+      .select('owner_id, best_star, best_survive, boss_progress');
+    all = data || [];
+    mine = all.find(r => r.owner_id === s.user.id) || null;
+  } catch (e) { box.innerHTML = '<div class="srow">战绩读取失败，请稍后再试</div>'; return; }
+  const star = (mine && mine.best_star) || 0;
+  const surv = (mine && mine.best_survive) || 0;
+  const starRank = star > 0 ? all.filter(r => (r.best_star || 0) > star).length + 1 : '—';
+  const survRank = surv > 0 ? all.filter(r => (r.best_survive || 0) > surv).length + 1 : '—';
+  box.innerHTML =
+    '<div class="srow"><span>⭐ 最高星数</span><b>' + star + '</b></div>' +
+    '<div class="srow"><span>🏅 星数排名</span><b>' + starRank + (starRank !== '—' ? (' / ' + all.length) : '') + '</b></div>' +
+    '<div class="srow"><span>⏱ 最长存活</span><b>' + fmtTime(surv) + '</b></div>' +
+    '<div class="srow"><span>🏅 存活排名</span><b>' + survRank + (survRank !== '—' ? (' / ' + all.length) : '') + '</b></div>' +
+    '<div class="srow"><span>🐉 Boss 进度</span><b>' + ((mine && mine.boss_progress) || 0) + '</b></div>';
+}
+
+/* ---- 排行榜弹窗 --------------------------------------------------------- */
+function openLeaderboard() {
+  if (!CLOUD) { toast('云服务未加载，请联网后重试'); return; }
+  if (lbOv) { lbOv.classList.remove('hidden'); loadLb('star'); return; }
+  const ov = el('div', 'lbOv', 'v2ov hidden');
+  ov.innerHTML = '<h2>🏆 无尽排行榜</h2><div class="sub">无尽模式 · 历史最佳成绩（登录后成绩才会记录）</div>' +
+    '<div class="lb-tabs"><button class="lb-tab on" data-k="star">⭐ 星数榜</button>' +
+    '<button class="lb-tab" data-k="survive">⏱ 存活时间榜</button></div>' +
+    '<div class="lb-list" id="lbList">加载中…</div>' +
+    '<div class="lb-me" id="lbMe"></div>' +
+    '<button class="v2btn" id="lbClose">返回</button>';
+  document.body.appendChild(ov);
+  lbOv = ov;
+  ov.querySelector('#lbClose').onclick = () => ov.classList.add('hidden');
+  ov.querySelectorAll('.lb-tab').forEach(t => {
+    t.onclick = () => {
+      ov.querySelectorAll('.lb-tab').forEach(x => x.classList.remove('on'));
+      t.classList.add('on');
+      loadLb(t.dataset.k);
+    };
+  });
+  ov.addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+  loadLb('star');
+}
+
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return (m > 0 ? m + ' 分 ' : '') + s + ' 秒';
+}
+
+async function loadLb(kind) {
+  const list = document.getElementById('lbList');
+  const me = document.getElementById('lbMe');
+  if (!list) return;
+  const rows = await fetchLeaderboard(kind);
+  if (!rows.length) { list.innerHTML = '<div class="lb-empty">暂无数据，快来创造纪录吧！</div>'; if (me) me.innerHTML = ''; return; }
+  const isStar = kind === 'star';
+  let html = '<div class="lb-head"><span>名次</span><span>玩家</span><span>' + (isStar ? '星数' : '存活') + '</span><span>Boss</span></div>';
+  rows.forEach((r, i) => {
+    const name = (r.owner_name || '玩家');
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+    const av = r.avatar_url
+      ? '<img src="' + r.avatar_url + '" style="width:20px;height:20px;border-radius:50%;object-fit:cover;vertical-align:-5px;margin-right:4px">'
+      : '';
+    html += '<div class="lb-row' + (i < 3 ? ' top' : '') + '">' +
+      '<span class="lb-rank">' + medal + '</span>' +
+      '<span class="lb-name">' + av + name + '</span>' +
+      '<span class="lb-val">' + (isStar ? ('★ ' + r.best_star) : fmtTime(r.best_survive)) + '</span>' +
+      '<span class="lb-boss">' + (r.boss_progress > 0 ? ('第 ' + r.boss_progress + ' Boss') : '—') + '</span></div>';
+  });
+  list.innerHTML = html;
+  if (me && cloudUser) {
+    me.innerHTML = '👤 你已登录：' + (cloudUser.name || '玩家') + '（成绩会在无尽模式死亡后自动上榜）';
+  } else if (me) {
+    me.innerHTML = '🔒 未登录：手机号登录后，无尽成绩才能上榜';
+  }
+}
+
 
 /* ---- 面板滚动支持 ---------------------------------------------------------
    原版给 html,body 设了 touch-action:none + overflow:hidden，并且在 window 上
@@ -1745,7 +2217,11 @@ endGame = function (win) {
       if (GAME_MODE === 'endless') {
         const st = V.endless ? V.endless.star : 0;
         const starTxt = st > 0 ? ('无尽第 ' + endlessStarsText(st) + ' 颗星') : '尚未进入无尽';
-        t.innerHTML += `<br><span style="color:#ffd54a;font-size:14px">无尽模式 · ${starTxt} · 历史最高 ★${(S.endlessBest || 0)} · 本局积分 +${fmt(run)} · 最高连击 ${V.maxCombo}</span>`;
+        const surviveSec = V.surviveT ? Math.max(0, Math.round((performance.now() - V.surviveT) / 1000)) : 0;
+        const bossProg = V.bossDone || 0;
+        t.innerHTML += `<br><span style="color:#ffd54a;font-size:14px">无尽模式 · ${starTxt} · 存活 ${fmtTime(surviveSec)} · 历史最高 ★${(S.endlessBest || 0)} · 本局积分 +${fmt(run)} · 最高连击 ${V.maxCombo}</span>`;
+        // 上报云端排行榜（已登录才记录）
+        reportEndlessScore(st, surviveSec, bossProg);
       } else {
         t.innerHTML += `<br><span style="color:#9fc0d4;font-size:14px">本局积分 +${fmt(run)} · 击败 Boss ${V.bossDone}/3 · 最高连击 ${V.maxCombo}</span>`;
       }
@@ -1753,7 +2229,7 @@ endGame = function (win) {
   } catch (e) { }
 };
 const _start = start;
-start = function () { _start.apply(this, arguments); lastV2 = performance.now(); };
+start = function () { _start.apply(this, arguments); lastV2 = performance.now(); if (V) V.surviveT = performance.now(); };
 
 function updateShopCoin() {
   const e = document.getElementById('v2coin'); if (e) e.textContent = fmt(S.coins + (V ? V.coinsRun : 0));
@@ -1996,13 +2472,24 @@ function updateHUD2() {
 requestAnimationFrame(loopV2);
 updateShopCoin();
 
+/* ---- 云服务初始化：会话恢复（手机号登录，无外站回调） ---- */
+(async function initCloud() {
+  if (!CLOUD) return;
+  try {
+    await refreshCloudUser();
+    renderLoginBadge();
+  } catch (e) { }
+})();
+
 /* ---- 调试出口（便于自动化测试，不影响游戏）---- */
 window.__v2 = {
   get V(){ return V; }, get S(){ return S; },
   SKINS, UPGRADES, BOSS_DEFS,
   tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice,
   get cam() { return cam; }, BOSS_SIZE,
-  get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; }
+  get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
+  get cloudUser() { return cloudUser; },
+  cloudLogin, cloudLogout, fetchLeaderboard, reportEndlessScore
 };
 })();
 
