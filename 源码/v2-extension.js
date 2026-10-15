@@ -1541,11 +1541,17 @@ updateHud = function () {
   return r;
 };
 
-/* 原版吃鱼音效音量偏大（原值 0.9），这里调小，让 Boss 出场音更突出；并叠加全局音量 */
+/* 原版吃鱼音效音量偏大（原值 0.9），这里调小，让 Boss 出场音更突出；并叠加全局音量
+   M3：原版最多 5 个笑声叠播太吵 —— 限流为最多同时 2 个 + 最小间隔 130ms */
 const EAT_VOLUME = .22;
+let _lastEatAt = 0;
 const _playEat = playEat;
 playEat = function () {
   if (GAME_VOL <= 0) return;               // 静音时不播
+  const nowMs = performance.now();
+  if (nowMs - _lastEatAt < 130) return;    // 间隔太短直接跳过
+  while (eatVoices.length >= 2) { const v = eatVoices.shift(); try { v.pause(); } catch (e) { } }
+  _lastEatAt = nowMs;
   _playEat.apply(this, arguments);
   const a = eatVoices[eatVoices.length - 1];
   if (a) a.volume = EAT_VOLUME * GAME_VOL;
@@ -1723,8 +1729,39 @@ drawBackground = function (t) {
   updateCam();                                   // 每帧最开始更新镜头
   drawV2Background(t);
 };
+/* M3：第二大生物（tier 3）贴图替换为生肖黏土动物（9 只），大小/密度/总数不变 */
+const ZODIAC_IMGS = [];
+(function () {
+  try {
+    if (typeof V2_ZODIAC_SRC === 'undefined') return;
+    for (const k in V2_ZODIAC_SRC) {
+      const im = new Image();
+      im.src = V2_ZODIAC_SRC[k];
+      ZODIAC_IMGS.push(im);
+    }
+  } catch (e) { }
+})();
 const _drawFish = drawFish;
 drawFish = function (f, t) {
+  /* M3：tier 3（第二大、除 Boss 外）整体换装 —— 每条鱼随机固定一只生肖，绘制布局与原版完全一致 */
+  if (f && f.tier === 3 && ZODIAC_IMGS.length && ZODIAC_IMGS[0].complete) {
+    ctx.save(); ctx.translate(-cam.x, -cam.y);
+    const r = f.r, y = f.y + Math.sin(t / 400 + f.wobble) * f.wobbleAmp * .15;
+    const col = dangerColor(f);
+    ctx.save(); ctx.globalAlpha = .35; ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(1.5, r * .08);
+    ctx.beginPath(); ctx.ellipse(f.x, y + r * 1.05, r * 1.15, r * .36, 0, 0, TAU); ctx.stroke();
+    ctx.restore();
+    if (f.zod === undefined) f.zod = Math.floor(Math.random() * ZODIAC_IMGS.length);
+    const img = ZODIAC_IMGS[f.zod % ZODIAC_IMGS.length];
+    ctx.save();
+    ctx.translate(f.x, y); ctx.scale(f.dir, 1); ctx.rotate(Math.sin(t / 260 + f.wobble) * .08);
+    const th = r * 2.7, tw = th * (img.naturalWidth || 1) / (img.naturalHeight || 1);
+    ctx.shadowColor = col; ctx.shadowBlur = 12 + r * .18;
+    if (img.complete && img.naturalWidth) ctx.drawImage(img, -tw / 2, -th * .52, tw, th);
+    ctx.restore(); ctx.restore();
+    return;
+  }
   ctx.save(); ctx.translate(-cam.x, -cam.y);
   /* M1 视觉：逐鱼摆尾 —— 绕鱼心做小幅摇摆（每条鱼随机相位），加轻微呼吸缩放 */
   if (f) {
@@ -1821,15 +1858,15 @@ function drawPlayerV2(t) {  const p = player;
   const m = metric(img);
   ctx.save();
   ctx.translate(p.x, p.y);
-  /* 无敌光环：受伤后 / 冲刺中 / 升级选完的缓冲期都会亮起，让「无敌」看得见 */
+  /* 无敌光环 → M3 持续金身：全程恒定金色光环（不再渐隐），不再闪烁虚影 */
   const invLeft = invincibleUntil - performance.now();
-  if (invLeft > 0 && invLeft < 1e8) {
-    const a = Math.min(1, invLeft / 800) * .5 + .25;
+  const isInv = invLeft > 0 && invLeft < 1e8;
+  if (isInv) {
     const rr = p.r * 1.5 + Math.sin(t / 150) * 2.5;
     ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU);
-    ctx.strokeStyle = 'rgba(255,213,74,' + a + ')'; ctx.lineWidth = 3.5; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,213,74,.8)'; ctx.lineWidth = 3.5; ctx.stroke();
     ctx.beginPath(); ctx.arc(0, 0, rr * .8, 0, TAU);
-    ctx.strokeStyle = 'rgba(255,255,255,' + (a * .5) + ')'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.5; ctx.stroke();
   }
   ctx.scale(p.dir, 1);
   /* M1 视觉：动态 2D —— 呼吸浮动 + 摆尾扭切 + 冲刺拉伸，游动感来自三者的叠加 */
@@ -1848,16 +1885,16 @@ function drawPlayerV2(t) {  const p = player;
       ctx.scale(1 + chomp * .07, 1 - chomp * .06);               // 咬合时身体轻微压缩
     }
   }
-  if (performance.now() < invincibleUntil && Math.floor(t / 120) % 2 === 0) ctx.globalAlpha = 0.4;
-  /* M2.5 视觉：动态尾巴 —— 原图建模不可改动，尾巴为渲染层新增；
-     画在贴图之前（身后），锚点在身体后下缘之外，确保尾身露出贴图外，颜色自动采样当前皮肤 */
+  /* M3：无敌不再用闪烁虚影（移除 globalAlpha 闪烁），金身效果见上方光环+辉光 */
   drawSealTail(t, p, m, bob);
   if (m) {
     const k = (p.r * 2.35) / m.size;
     const dw = m.w * k, dh = m.h * k;
-    if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
-    ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
-    ctx.shadowBlur = 0;
+  /* M3：无敌期间金色辉光包裹身体（替代原虚影闪烁），与皮肤辉光同款效果 */
+  if (isInv) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 20; }
+  else if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
+  ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
+  ctx.shadowBlur = 0;
     /* 张嘴：贴图嘴部位置画一个深色椭圆口腔 + 上下颚高光
        位置：头部前方、眼睛正下方一点（x 前方 0.30，y +0.03），随体型缩放 */
     if (chomp > 0) {
