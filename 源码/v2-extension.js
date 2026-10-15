@@ -548,7 +548,8 @@ function newV() {
     eatCount: 0,
     bosses: [], bossIdx: -1, bossDone: 0, trig: [false, false, false],
     endless: { star: 0, round: 0, roundDone: 0, lastPick: -1, active: false, pendingWave: 0, nextWaveAt: 0 },
-    bullets: [], waves: [], snakes: [], parts: [],
+    bullets: [], waves: [], curves: [], parts: [],
+    mathFn: -1,   /* M2：高数 Boss 当前循环的函数编号（-1 = 尚未随机） */
     prevScore: 0, prevLives: (typeof lives === 'number' ? lives : 3),
     hurtFlash: 0, surviveT: 0
   };
@@ -565,8 +566,37 @@ const BOSS_DEFS = [
     sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 9, reward: 200, orbCoin: 50,
     line: '◆ 魔芋爽辣王来了！吃掉它的 3 个辣包！' },
   { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '答案卷', orbIc: '■', orbC: '#4cc9f0',
-    sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 3.1, atk: 'snake', dmg: 10, reward: 300, orbCoin: 80,
-    line: '◆ 高数压轴登场！小心它的函数线！' }
+    sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 10, reward: 300, orbCoin: 80,
+    line: '◆ 高数压轴登场！小心它的函数轨迹线！' }
+];
+/* ---- M2：辣条子弹贴图（V2_LATIAO_SRC 由 HTML 素材块注入） ---- */
+const LATIAO_IMG = new Image();
+if (typeof V2_LATIAO_SRC === 'string' && V2_LATIAO_SRC) LATIAO_IMG.src = V2_LATIAO_SRC;
+
+/* ---- M2：函数轨迹目录（高数压轴） --------------------------------------
+   每次攻击若尚未选函数则随机取一个，之后一直循环同一条函数图像。
+   pts 为归一化采样点（最大半径≈1），step 为平均段长（推进用）。 ---- */
+function _fnSample(n, f, scale) {
+  const p = [];
+  for (let i = 0; i <= n; i++) {
+    const v = f(i / n);
+    p.push([v[0] * scale, v[1] * scale]);
+  }
+  let step = 0;
+  for (let i = 1; i < p.length; i++) step += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+  return { pts: p, step: step / n };
+}
+const FN_CURVES = [
+  { name: '阿基米德螺线', s: _fnSample(300, k => { const th = k * 6 * Math.PI, r = k; return [Math.cos(th) * r, Math.sin(th) * r]; }, 1) },
+  { name: '对数螺线', s: _fnSample(300, k => { const th = k * 4 * Math.PI, r = Math.exp(1.25 * k) / Math.exp(1.25); return [Math.cos(th) * r, Math.sin(th) * r]; }, 1) },
+  { name: '双曲螺线', s: _fnSample(300, k => { const th = .55 + k * (6 * Math.PI - .55), r = .55 / th; return [Math.cos(th) * r, Math.sin(th) * r]; }, 1) },
+  { name: '圆的渐开线', s: _fnSample(260, k => { const t = k * 2 * Math.PI, d = 2 * Math.PI; return [(Math.cos(t) + t * Math.sin(t)) / d, (Math.sin(t) - t * Math.cos(t)) / d]; }, 1) },
+  { name: '摆线（旋轮线）', s: _fnSample(320, k => { const t = k * 4 * Math.PI; return [(t - Math.sin(t)) / (4 * Math.PI) - .5, (1 - Math.cos(t)) / 2 - .5]; }, 1.6) },
+  { name: '星形线', s: _fnSample(260, k => { const t = k * 2 * Math.PI; return [Math.pow(Math.cos(t), 3), Math.pow(Math.sin(t), 3)]; }, 1) },
+  { name: '三叶玫瑰线', s: _fnSample(240, k => { const t = k * Math.PI, r = Math.cos(3 * t); return [Math.cos(t) * r, Math.sin(t) * r]; }, 1) },
+  { name: '四叶玫瑰线', s: _fnSample(280, k => { const t = k * 2 * Math.PI, r = Math.sin(2 * t); return [Math.cos(t) * r, Math.sin(t) * r]; }, 1) },
+  { name: '双纽线', s: (function () { const p = []; for (let i = 0; i <= 160; i++) { const th = -Math.PI / 4 + i / 160 * (Math.PI / 2), r = Math.sqrt(Math.max(0, Math.cos(2 * th))); p.push([Math.cos(th) * r, Math.sin(th) * r]); } for (let i = 0; i <= 160; i++) { const th = 3 * Math.PI / 4 + i / 160 * (Math.PI / 2), r = Math.sqrt(Math.max(0, -Math.cos(2 * th))); p.push([Math.cos(th) * r, Math.sin(th) * r]); } let st = 0; for (let i = 1; i < p.length; i++) st += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); return { pts: p, step: st / p.length }; })() },
+  { name: '心脏线', s: _fnSample(280, k => { const t = k * 2 * Math.PI, r = 1 - Math.cos(t); return [Math.cos(t) * r / 2, Math.sin(t) * r / 2]; }, 1) }
 ];
 const _bossImgCache = {};
 function bossImg(def) {
@@ -1231,22 +1261,26 @@ function updateBossOne(B, dt) {
       for (let i = 0; i < n; i++) {
         const a = off + i / n * TAU;
         V.bullets.push({ x: B.x, y: B.y, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210,
-          r: 9, sp: 210, dmg: D.dmg, life: 5, homing: false, c: '#ff7a3d' });
+          r: 11, sp: 210, dmg: D.dmg, life: 5, homing: false, c: '#ff7a3d' });   /* M2：辣条比原子弹大一点 */
       }
     } else {
-      /* 高数压轴：蛇形函数线 —— 整体朝玩家冲出去，路径按正弦摆动，一路前进到出界 */
-      const baseAng = Math.atan2(player.y - B.y, player.x - B.x);
-      const cnt = B.ph >= 3 ? 2 : 1;
-      for (let i = 0; i < cnt; i++) {
-        V.snakes.push({
-          pts: [{ x: B.x, y: B.y }],
-          ang0: baseAng + (i - (cnt - 1) / 2) * 0.55,
-          t: 0, speed: 230 + B.ph * 36, amp: 0.62, freq: 4.6,
-          w: 8, dmg: D.dmg, maxLen: 560, life: 7, cool: 0
-        });
-      }
+      /* M2：高数压轴 —— 函数轨迹线。
+         未选过函数则随机选一条，之后一直循环同一函数；
+         轨迹整体朝玩家缓慢转向（跟踪），头部沿函数曲线推进，
+         穿透玩家后继续延伸；前端画出的线段随寿命慢慢消失。 */
+      if (V.mathFn < 0 || V.mathFn >= FN_CURVES.length) V.mathFn = Math.floor(Math.random() * FN_CURVES.length);
+      const f = FN_CURVES[V.mathFn];
+      const sc = Math.min(W, H) * .34;
+      V.curves.push({
+        f, sc, pts: [], acc: 0, idx: 0,
+        hx: B.x, hy: B.y,
+        baseAng: Math.atan2(player.y - B.y, player.x - B.x),
+        speed: 300 + B.ph * 30, dmg: D.dmg, cool: 0, t: 0, fade: 2.4, done: 0, life: 12
+      });
+      toast('§ 函数轨迹 · ' + f.name, true);
       sfx(170, .4, 'sawtooth', .09, 60);
     }
+    if (D.atk === 'curve') B.atk = 4;   /* 函数轨迹固定 4 秒一发，不随相位压缩 */
     beep('death');
   }
 
@@ -1287,34 +1321,50 @@ function updateBullets(dt) {
     const wd = Math.hypot(player.x - w.x, player.y - w.y);
     if (!w.hit && Math.abs(wd - w.r) < player.r * .68 + 8) { w.hit = true; hitPlayer(w.dmg, true); }
   }
-  // 蛇形函数线（高数压轴）：一路往前冲，撞到就掉血
-  for (let i = V.snakes.length - 1; i >= 0; i--) {
-    const s = V.snakes[i];
+  /* M2：函数轨迹线（高数压轴）—— 头部沿函数曲线推进，整体朝玩家缓慢转向，
+     穿透玩家后继续延伸；线段带寿命，随时间从尾部慢慢消失 */
+  for (let i = V.curves.length - 1; i >= 0; i--) {
+    const s = V.curves[i];
     s.t += dt; s.life -= dt;
-    const head = s.pts[s.pts.length - 1];
-    const ang = s.ang0 + Math.sin(s.t * s.freq) * s.amp;      // 朝玩家 + 正弦蛇行
-    const nx = head.x + Math.cos(ang) * s.speed * dt;
-    const ny = head.y + Math.sin(ang) * s.speed * dt;
-    s.pts.push({ x: nx, y: ny });
-    // 限长：超过就掐尾（头进尾出，像一条蛇）
-    let len = 0;
-    for (let k = s.pts.length - 1; k > 0; k--) {
-      len += Math.hypot(s.pts[k].x - s.pts[k - 1].x, s.pts[k].y - s.pts[k - 1].y);
-      if (len > s.maxLen) { s.pts.splice(0, k - 1); break; }
+    /* 跟踪玩家：基准角以有限转速朝玩家方向转 */
+    const want = Math.atan2(player.y - s.hy, player.x - s.hx);
+    let da = want - s.baseAng;
+    while (da > Math.PI) da -= TAU;
+    while (da < -Math.PI) da += TAU;
+    s.baseAng += clamp(da, -.9 * dt, .9 * dt) * .55;
+    /* 头部沿函数轨迹推进：acc 为归一化弧长进度 */
+    if (s.done <= 0) {
+      s.acc += s.speed * dt / s.sc;
+      const fp = s.f.s.pts, target = Math.min(s.acc / s.f.s.step, fp.length - 1);
+      while (s.idx < target) {
+        s.idx++;
+        const p = fp[Math.floor(s.idx)];
+        const ca = Math.cos(s.baseAng), sa = Math.sin(s.baseAng);
+        const wx = s.hx + (p[0] * ca - p[1] * sa) * s.sc;
+        const wy = s.hy + (p[0] * sa + p[1] * ca) * s.sc;
+        s.pts.push({ x: wx, y: wy, age: 0 });
+      }
+      if (s.idx >= fp.length - 1.01) s.done = .0001;   /* 单程画完（允许图像自我重叠） */
+    } else {
+      s.done += dt;                                     /* 画完后停留，等尾部消失 */
     }
+    /* 线段寿命：从最老的一端开始慢慢消失 */
+    for (let k = 0; k < s.pts.length; k++) s.pts[k].age += dt;
+    while (s.pts.length && s.pts[0].age > s.fade) s.pts.shift();
+    /* 穿透判定：抽点检测，命中后短暂冷却，曲线不消失继续延伸 */
     s.cool -= dt;
-    if (s.cool <= 0) {                                        // 抽点检测，避免全量遍历
-      const rr = player.r * .68 + s.w * .8;
-      for (let k = 0; k < s.pts.length; k += 2) {
+    if (s.cool <= 0 && s.pts.length > 4) {
+      const rr = player.r * .68 + 6;
+      for (let k = 0; k < s.pts.length; k += 3) {
         const p = s.pts[k];
         if (Math.hypot(p.x - player.x, p.y - player.y) < rr) {
-          s.cool = 1.0; hitPlayer(s.dmg, true);
+          s.cool = .9; hitPlayer(s.dmg, true);
           for (let q = 0; q < 8; q++) V.parts.push({ x: p.x, y: p.y, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 5), life: .4, c: '#bfe6ff' });
           break;
         }
       }
     }
-    if (s.life <= 0 || nx < -80 || nx > W + 80 || ny < -80 || ny > H + 80) V.snakes.splice(i, 1);
+    if (s.life <= 0 || (s.done > s.fade && !s.pts.length) || s.pts.length > 2600) V.curves.splice(i, 1);
   }
 }
 
@@ -1348,7 +1398,7 @@ function defeatBoss(B) {
   if (V.bossDone > (S.bossKilled || 0)) { S.bossKilled = V.bossDone; saveS(); }
 
   if (V.bosses.length === 0) {
-    V.bullets.length = 0; V.waves.length = 0; V.snakes.length = 0;
+    V.bullets.length = 0; V.waves.length = 0; V.curves.length = 0;
     bossbar.classList.remove('on');
     // 这一波清空了，推进模式
     if (GAME_MODE === 'endless') {
@@ -1779,16 +1829,32 @@ function drawPlayerV2(t) {
 
 function drawBossLayer(t) {
   if (!V) return;
-  // 音浪（袋鼠 DJ）：加粗 + 双层描边 + 泛光，让弹幕边缘一目了然
+  /* M2：袋鼠 DJ 音浪 → 水涟漪动效（参考 AE 水涟漪素材）：
+     三圈同心涟漪 + 正弦波纹扰动 + 青蓝辉光 + 白色高光芯，纵向略压扁模拟水面透视 */
   for (const w of V.waves) {
     ctx.save();
-    ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, TAU);
-    ctx.shadowColor = 'rgba(255,40,80,.95)'; ctx.shadowBlur = 18;
-    ctx.strokeStyle = 'rgba(255,45,90,' + (.9 * w.a) + ')';
-    ctx.lineWidth = 11 * w.a + 4; ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(255,225,235,' + (.85 * w.a) + ')';
-    ctx.lineWidth = 3 * w.a + 1; ctx.stroke();
+    for (let ring = 0; ring < 3; ring++) {
+      const rr = w.r * (1 - ring * .18);
+      if (rr <= 4) break;
+      const aMul = w.a * (1 - ring * .3);
+      const seg = 46;
+      ctx.beginPath();
+      for (let k = 0; k <= seg; k++) {
+        const th = k / seg * TAU;
+        const wob = Math.sin(th * (5 + ring * 2) + w.r / 26 + ring * 2.2) * (4 + ring * 2.5);
+        const x = w.x + Math.cos(th) * (rr + wob);
+        const y = w.y + Math.sin(th) * (rr + wob) * .92;
+        k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.shadowColor = 'rgba(80,190,255,.9)'; ctx.shadowBlur = 16;
+      ctx.strokeStyle = 'rgba(110,210,255,' + (.72 * aMul) + ')';
+      ctx.lineWidth = (ring === 0 ? 6 : 3.5) * w.a + 1;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(235,252,255,' + (.5 * aMul) + ')';
+      ctx.lineWidth = 1.6; ctx.stroke();
+    }
     ctx.restore();
   }
   for (const B of V.bosses) {
@@ -1842,35 +1908,44 @@ function drawBossLayer(t) {
       }
     }
   }
-  // 蛇形函数线（画成一条会发光的曲线）
-  if (V.snakes.length) {
+  /* M2：函数轨迹线 —— 普通线条画风：细白线 + 淡蓝辉光，头部小亮点 */
+  if (V.curves.length) {
     ctx.save();
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    for (const s of V.snakes) {
+    for (const s of V.curves) {
       const n = s.pts.length;
       if (n < 2) continue;
       for (let pass = 0; pass < 2; pass++) {
         ctx.beginPath();
         ctx.moveTo(s.pts[0].x, s.pts[0].y);
         for (let k = 1; k < n; k++) ctx.lineTo(s.pts[k].x, s.pts[k].y);
-        if (pass === 0) { ctx.strokeStyle = 'rgba(126,200,255,.26)'; ctx.lineWidth = s.w * 2.7; }
-        else { ctx.strokeStyle = '#bfe6ff'; ctx.lineWidth = s.w * .95; }
+        if (pass === 0) { ctx.strokeStyle = 'rgba(190,225,255,.24)'; ctx.lineWidth = 9; }
+        else { ctx.strokeStyle = 'rgba(242,250,255,.95)'; ctx.lineWidth = 3; }
         ctx.stroke();
       }
       const h = s.pts[n - 1];
-      ctx.beginPath(); ctx.arc(h.x, h.y, s.w * 1.15, 0, TAU);
-      ctx.fillStyle = '#eaf6ff'; ctx.fill();
+      ctx.beginPath(); ctx.arc(h.x, h.y, 3.6, 0, TAU);
+      ctx.fillStyle = '#ffffff'; ctx.fill();
     }
     ctx.restore();
   }
-  // 弹幕
+  /* M2：弹幕 → 辣条贴图（比原子弹大一点），沿速度方向旋转；贴图未就绪回落圆形 */
   for (const b of V.bullets) {
-    ctx.save(); ctx.shadowColor = b.c; ctx.shadowBlur = 14;
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fillStyle = b.c; ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.beginPath(); ctx.arc(b.x - b.r * .28, b.y - b.r * .3, b.r * .34, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
-    ctx.restore();
+    if (LATIAO_IMG.complete && LATIAO_IMG.naturalWidth) {
+      const ih = b.r * 2.9, iw = ih * (LATIAO_IMG.naturalWidth / LATIAO_IMG.naturalHeight);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(Math.atan2(b.vy, b.vx) + Math.PI / 2);
+      ctx.drawImage(LATIAO_IMG, -iw / 2, -ih / 2, iw, ih);
+      ctx.restore();
+    } else {
+      ctx.save(); ctx.shadowColor = b.c; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fillStyle = b.c; ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(b.x - b.r * .28, b.y - b.r * .3, b.r * .34, 0, TAU);
+      ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
+      ctx.restore();
+    }
   }
   // 粒子
   for (let i = V.parts.length - 1; i >= 0; i--) {
