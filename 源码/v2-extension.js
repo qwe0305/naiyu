@@ -1596,14 +1596,93 @@ if (typeof DIFFS !== 'undefined' && DIFFS) {
   });
 }
 
+/* ================= M1 视觉动效升级 =========================================
+   1) 新海底背景图（V2_BG_SRC 由 HTML 素材块注入，cover 铺屏 + 轻视差）
+   2) 水面动效：移动波光斑 / 摇曳光柱 / 上升气泡（全部扩展层自绘）
+   3) 原版 drawBackground 代码零改动 —— 背景图加载失败时自动回落原版 */
+const V2_BG = new Image();
+if (typeof V2_BG_SRC === 'string' && V2_BG_SRC) V2_BG.src = V2_BG_SRC;
+const v2Bubbles = [];
+let v2BubLast = 0;
+function drawV2Water(t) {
+  /* --- 波光斑：两簇反向漂移的柔光椭圆，低alpha叠加，手机端开销可控 --- */
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 7; i++) {
+    const px = (i * 197 + Math.sin(t / 2600 + i * 2.1) * 90 + t / 55) % (innerWidth + 260) - 130;
+    const py = innerHeight * (.14 + .11 * (i % 3)) + Math.sin(t / 1900 + i) * 26;
+    const rw = 110 + (i % 4) * 46, rh = 13 + (i % 3) * 7;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, rw);
+    g.addColorStop(0, 'rgba(190,235,255,.085)');
+    g.addColorStop(1, 'rgba(190,235,255,0)');
+    ctx.fillStyle = g;
+    ctx.save(); ctx.translate(px, py); ctx.rotate(-.16 + (i % 2) * .1); ctx.scale(1, rh / rw); ctx.translate(-px, -py);
+    ctx.beginPath(); ctx.arc(px, py, rw, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+  /* --- 摇曳光柱：4 根，从画面顶部斜插下来，透明度呼吸 --- */
+  ctx.save();
+  ctx.globalAlpha = .10;
+  for (let i = 0; i < 4; i++) {
+    const x = (i * innerWidth / 3.6 + Math.sin(t / 3400 + i * 1.7) * 70) - cam.x * .04;
+    const w0 = 60 + i * 18, sway = Math.sin(t / 2200 + i) * 90;
+    const g = ctx.createLinearGradient(0, 0, 0, innerHeight);
+    g.addColorStop(0, 'rgba(255,255,255,.55)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x, -20); ctx.lineTo(x + w0, -20);
+    ctx.lineTo(x + w0 + 190 + sway, innerHeight); ctx.lineTo(x + 40 + sway, innerHeight);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  /* --- 上升气泡：与原版节奏一致（每帧 8% 概率生成），扩展层自管自收 --- */
+  if (t - v2BubLast > 90 && Math.random() < .09) {
+    v2BubLast = t;
+    v2Bubbles.push({ x: Math.random() * innerWidth, y: innerHeight + 12, r: 2 + Math.random() * 5, s: 28 + Math.random() * 55 });
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.38)'; ctx.lineWidth = 1.2;
+  for (let i = v2Bubbles.length - 1; i >= 0; i--) {
+    const b = v2Bubbles[i];
+    b.y -= b.s / 60; b.x += Math.sin(t / 500 + b.y / 55) * .6;
+    if (b.y < -14) { v2Bubbles.splice(i, 1); continue; }
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.stroke();
+  }
+}
+function drawV2Background(t) {
+  if (V2_BG.complete && V2_BG.naturalWidth) {
+    /* cover 铺满视口，四周留 70px 余量做视差偏移（镜头移动时背景缓动，制造纵深） */
+    const iw = V2_BG.naturalWidth, ih = V2_BG.naturalHeight, M = 70;
+    const k = Math.max((innerWidth + M * 2) / iw, (innerHeight + M * 2) / ih);
+    const dw = iw * k, dh = ih * k;
+    const ox = -M - clamp(cam.x * .05, -M, M);
+    const oy = -M - clamp(cam.y * .05, -M, M);
+    ctx.drawImage(V2_BG, ox, oy, dw, dh);
+    /* 底部加深，保证 HUD 与鱼群可读性 */
+    const dg = ctx.createLinearGradient(0, innerHeight * .55, 0, innerHeight);
+    dg.addColorStop(0, 'rgba(4,32,54,0)'); dg.addColorStop(1, 'rgba(4,32,54,.42)');
+    ctx.fillStyle = dg; ctx.fillRect(0, 0, innerWidth, innerHeight);
+    drawV2Water(t);
+  } else {
+    _drawBackground(t);   // 背景图未就绪（如离线首帧）→ 回落原版渐变背景
+  }
+}
 const _drawBackground = drawBackground;
 drawBackground = function (t) {
   updateCam();                                   // 每帧最开始更新镜头
-  return _drawBackground.apply(this, arguments);
+  drawV2Background(t);
 };
 const _drawFish = drawFish;
 drawFish = function (f, t) {
   ctx.save(); ctx.translate(-cam.x, -cam.y);
+  /* M1 视觉：逐鱼摆尾 —— 绕鱼心做小幅摇摆（每条鱼随机相位），加轻微呼吸缩放 */
+  if (f) {
+    if (f.seed === undefined) f.seed = Math.random() * 10;
+    const sway = Math.sin(t / 240 + f.seed * 7) * .07;
+    const pulse = 1 + Math.sin(t / 300 + f.seed * 5) * .025;
+    ctx.translate(f.x, f.y); ctx.rotate(sway); ctx.scale(pulse, 2 - pulse); ctx.translate(-f.x, -f.y);
+  }
   _drawFish.apply(this, arguments);
   ctx.restore();
 };
@@ -1657,14 +1736,40 @@ function drawPlayerV2(t) {
     ctx.strokeStyle = 'rgba(255,255,255,' + (a * .5) + ')'; ctx.lineWidth = 1.5; ctx.stroke();
   }
   ctx.scale(p.dir, 1);
+  /* M1 视觉：动态 2D —— 呼吸浮动 + 摆尾扭切 + 冲刺拉伸，游动感来自三者的叠加 */
+  const nowMs = performance.now();
   const bob = Math.sin(t / 300) * 3;
   ctx.rotate(Math.sin(t / 350) * 0.06);
+  const sway = Math.sin(t / 190) * 0.055;                       // 摆尾：横向扭切
+  ctx.transform(1, 0, sway, 1, 0, 0);
+  if (V && V.dashT > 0) ctx.scale(1.08, .92);                   // 冲刺：前拉伸后压扁
+  /* 张嘴吃鱼：吃到鱼后的 310ms 内画张开的嘴 + 咀嚼缩放 */
+  let chomp = 0;                                                 // 0~1 咀嚼强度
+  if (V && V.mouthT) {
+    const mt = nowMs - V.mouthT;
+    if (mt < 310) {
+      chomp = mt < 90 ? 1 - mt / 90 : .55 * (1 - (mt - 90) / 220);
+      ctx.scale(1 + chomp * .07, 1 - chomp * .06);               // 咬合时身体轻微压缩
+    }
+  }
   if (performance.now() < invincibleUntil && Math.floor(t / 120) % 2 === 0) ctx.globalAlpha = 0.4;
   if (m) {
     const k = (p.r * 2.35) / m.size;
     const dw = m.w * k, dh = m.h * k;
     if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
     ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
+    ctx.shadowBlur = 0;
+    /* 张嘴：贴图嘴部位置画一个深色椭圆口腔 + 上下颚高光，位置随体型缩放 */
+    if (chomp > 0) {
+      const mx = m.size * .30 * k, my = -m.size * .04 * k;      // 相对贴图中心的嘴部偏移
+      ctx.save();
+      ctx.translate(mx, my + bob);
+      ctx.fillStyle = 'rgba(60,20,20,.85)';
+      ctx.beginPath(); ctx.ellipse(0, 0, p.r * .30 * chomp + 1, p.r * .22 * chomp + 1, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,120,120,.5)';
+      ctx.beginPath(); ctx.ellipse(0, p.r * .10 * chomp, p.r * .16 * chomp, p.r * .07 * chomp, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
   } else {
     ctx.fillStyle = '#ffd54a';
     ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * .8, 0, 0, TAU); ctx.fill();
@@ -1964,6 +2069,7 @@ function updateV2(dt, now) {
     const d = score - V.prevScore;
     V.prevScore = score;
     V.eatCount++;
+    V.mouthT = performance.now();   // M1 视觉：吃鱼瞬间张嘴（张嘴 90ms → 咀嚼闭合 220ms）
     V.combo++; V.comboT = 2.4;
     V.maxCombo = Math.max(V.maxCombo, V.combo);
     V.coinsRun += Math.round(d * 0.01 * (1 + V.up.combo) * coinMul());   // 积分 = 得分 × 0.01 × (1+连击大师) × 难度倍率
