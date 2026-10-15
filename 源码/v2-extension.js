@@ -275,7 +275,7 @@ function newV() {
     dashT: 0, dashCd: 0, dashX: 1, dashY: 0,
     eatCount: 0,
     bosses: [], bossIdx: -1, bossDone: 0, trig: [false, false, false],
-    endless: { star: 0, round: 0, roundDone: 0, lastPick: -1, active: false },
+    endless: { star: 0, round: 0, roundDone: 0, lastPick: -1, active: false, pendingWave: 0, nextWaveAt: 0 },
     bullets: [], waves: [], snakes: [], parts: [],
     prevScore: 0, prevLives: (typeof lives === 'number' ? lives : 3),
     hurtFlash: 0
@@ -369,12 +369,20 @@ setOv.innerHTML =
   '<div class="row btnrow3">' +
   '<button id="setRestart">↻ 重新开始</button>' +
   '<button id="setResume">▶ 继续游戏</button>' +
-  '<button id="setHome">⌂ 回主界面</button></div>';
+  '<button id="setHome">⌂ 回主界面</button></div>' +
+  '<div class="row" id="setBackRow" style="display:none">' +
+  '<button id="setBack" style="width:100%;padding:11px 0;font-size:14px;font-weight:800;border:none;border-radius:12px;cursor:pointer;background:linear-gradient(180deg,#ffd54a,#ffb02e);color:#3d2a00">返回</button></div>';
 document.body.appendChild(setOv);
 
 shopBtn.onclick = () => { renderShop(); shop.classList.remove('hidden'); };
 document.getElementById('shopClose').onclick = () => shop.classList.add('hidden');
-setBtn.onclick = () => setOv.classList.remove('hidden');
+setBtn.onclick = () => {
+  // 主界面时只显示「返回」；游戏中显示三个功能按钮（与游戏中设置区分）
+  const inGame = state !== 'menu';
+  document.querySelector('#setOv .btnrow3').style.display = inGame ? 'flex' : 'none';
+  document.getElementById('setBackRow').style.display = inGame ? 'none' : 'block';
+  setOv.classList.remove('hidden');
+};
 
 /* ---- 设置面板三个功能按钮：重新开始 / 继续游戏 / 回主界面 ---- */
 document.getElementById('setRestart').onclick = () => {
@@ -390,6 +398,7 @@ document.getElementById('setHome').onclick = () => {
   state = 'menu';
   reset();
 };
+document.getElementById('setBack').onclick = () => setOv.classList.add('hidden');
 
 /* ---- 设置面板交互：音量 + 生成速度 ---------------------------------------- */
 (function initSettings() {
@@ -912,20 +921,21 @@ function endlessStarsText(star) {
   const map = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九' };
   return map[star] || ('' + star);
 }
-function pickBossIdx() {
-  // 随机抽一个 Boss 索引，避开上一波用过的（相邻波不重复）
-  const used = V.endless.lastPicks || [];
-  const pool = [0, 1, 2].filter(i => !used.includes(i));
-  const src = pool.length ? pool : [0, 1, 2];
-  return src[Math.floor(Math.random() * src.length)];
-}
 function spawnEndlessWave() {
   const spec = endlessSpec(V.endless.star);
+  const n = Math.min(3, spec.perRound);
+  const pool = [0, 1, 2];
+  // 洗牌后取前 n 个，保证本波内不重复；再用 pickBossIdx 的「相邻波不重复」逻辑重排首个
   const picks = [];
-  while (picks.length < spec.perRound) {
-    let idx = pickBossIdx();
-    if (picks.includes(idx)) idx = [0, 1, 2].find(i => !picks.includes(i));
-    picks.push(idx);
+  const bag = pool.slice();
+  while (picks.length < n && bag.length) {
+    const k = Math.floor(Math.random() * bag.length);
+    picks.push(bag.splice(k, 1)[0]);
+  }
+  // 相邻波不重复：若本波第一个 Boss 与上一波重复，则换到末位
+  const used = V.endless.lastPicks || [];
+  if (picks.length > 1 && used.length && used.includes(picks[0])) {
+    const d = picks.shift(); picks.push(d);
   }
   V.endless.lastPicks = picks.slice();
   picks.forEach(idx => spawnBoss(idx));
@@ -946,7 +956,8 @@ function advanceEndless() {
     E.active = true; E.star = 1; E.round = 1; E.roundDone = 0; E.lastPicks = [];
     saveEndlessBest();
     showEndlessStar();
-    setTimeout(() => { if (V && state === 'playing' && !V.bosses.length) spawnEndlessWave(); }, 1400);
+    E.pendingWave++;   // 由主循环轮询补生成（避免升级弹窗打断 setTimeout 导致 Boss 永久消失）
+    E.nextWaveAt = performance.now() + 1400;
     return;
   }
   E.roundDone++;
@@ -954,13 +965,15 @@ function advanceEndless() {
   if (E.roundDone < spec.rounds) {
     // 同一颗星还有下一轮
     E.round++;
-    setTimeout(() => { if (V && state === 'playing' && !V.bosses.length) spawnEndlessWave(); }, 1400);
+    E.pendingWave++;
+    E.nextWaveAt = performance.now() + 1400;
   } else {
     // 这颗星完成，进入下一颗星
     E.star++; E.round = 1; E.roundDone = 0;
     saveEndlessBest();
     showEndlessStar();
-    setTimeout(() => { if (V && state === 'playing' && !V.bosses.length) spawnEndlessWave(); }, 1600);
+    E.pendingWave++;
+    E.nextWaveAt = performance.now() + 1600;
   }
 }
 function showEndlessTitle(mainText, starText) {
@@ -1548,6 +1561,18 @@ function updateV2(dt, now) {
       else V.nextBossAt = now + 3000;
     }
   }
+
+  /* --- 无尽模式：待生成波次的轮询补生成 ---
+     根因修复：原来用 setTimeout 延迟生成下一波，回调守卫 `state === 'playing'`；
+     若玩家在延迟窗口内升级触发「进化」弹窗（state 变 'levelup'），回调被静默跳过
+     且无重试，导致这一波 Boss 永久消失。改成由主循环轮询：只要还有待生成波次、
+     场上没 Boss、时间到了，就补生成 —— 升级弹窗结束后恢复 playing 也会自动补上。 */
+  if (GAME_MODE === 'endless' && V.endless.active && V.endless.pendingWave > 0 &&
+      !V.bosses.length && now >= V.endless.nextWaveAt) {
+    V.endless.pendingWave--;
+    spawnEndlessWave();
+  }
+
   updateBoss(dt);
 }
 
