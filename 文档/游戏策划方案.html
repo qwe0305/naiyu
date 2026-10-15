@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>《吞噬大作战 · 音响Boss》玩法分析与功能扩展方案</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#141c33; --panel2:#1a2340; --line:rgba(255,255,255,.10);
+    --txt:#e9edff; --dim:#98a5c8; --gold:#ffd23f; --gold2:#ff9f1c;
+    --red:#ff4d6d; --grn:#3ddc97; --blu:#4cc9f0; --pur:#b388ff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:
+      radial-gradient(120% 60% at 50% 0%, #1b2450 0%, #0b1020 55%) fixed,
+      var(--bg);
+    color:var(--txt);
+    font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    line-height:1.78;font-size:15px;
+  }
+  .wrap{max-width:900px;margin:0 auto;padding:56px 26px 90px}
+
+  /* 封面 */
+  .cover{text-align:center;margin-bottom:14px}
+  .cover .kicker{font-size:12px;letter-spacing:5px;color:var(--dim);margin-bottom:14px}
+  .cover h1{
+    font-size:38px;margin:0 0 10px;line-height:1.24;letter-spacing:-.5px;
+    background:linear-gradient(180deg,#fff 8%,#ffd23f 58%,#ff8a00 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .cover .sub{color:var(--dim);font-size:14px}
+  .metaline{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:22px 0 8px}
+  .tag{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:99px;
+    padding:5px 13px;font-size:12px;color:var(--dim)}
+  .tag.gold{border-color:rgba(255,210,63,.45);color:var(--gold)}
+  .tag.grn{border-color:rgba(61,220,151,.45);color:var(--grn)}
+
+  /* 提示条 */
+  .note{background:rgba(255,210,63,.09);border:1px solid rgba(255,210,63,.32);
+    border-left:4px solid var(--gold);border-radius:12px;padding:14px 18px;margin:26px 0;font-size:13.5px;color:#ffe9a8}
+  .note b{color:var(--gold)}
+  .quiet{background:rgba(76,201,240,.08);border-color:rgba(76,201,240,.3);border-left-color:var(--blu);color:#c9ecff}
+  .quiet b{color:var(--blu)}
+
+  h2{font-size:22px;margin:52px 0 6px;padding-top:20px;border-top:1px solid var(--line);letter-spacing:.3px}
+  h2 .no{color:var(--gold);font-weight:900;margin-right:10px;font-size:17px;vertical-align:2px}
+  h3{font-size:16.5px;margin:30px 0 8px;color:#fff}
+  h3::before{content:"";display:inline-block;width:4px;height:15px;background:var(--gold);
+    border-radius:2px;margin-right:9px;vertical-align:-2px}
+  h4{font-size:14.5px;margin:20px 0 6px;color:#dfe6ff}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:6px 0}
+  strong{color:#fff}
+  em{color:var(--gold);font-style:normal;font-weight:700}
+  code{background:rgba(255,255,255,.09);border-radius:5px;padding:1px 6px;font-size:13px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;color:#ffd9a1}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13.5px;
+    background:rgba(255,255,255,.03);border-radius:12px;overflow:hidden}
+  th{background:rgba(255,255,255,.07);text-align:left;padding:11px 13px;font-weight:700;
+    color:#fff;font-size:13px;white-space:nowrap}
+  td{padding:10px 13px;border-top:1px solid var(--line);vertical-align:top}
+  tbody tr:hover{background:rgba(255,255,255,.035)}
+  td b{color:var(--gold)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.028));
+    border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .card h4{margin:0 0 7px;font-size:15px}
+  .card p{margin:6px 0 0;font-size:13.5px;color:#c3cdea}
+  .card .em{font-size:22px;display:block;margin-bottom:6px}
+
+  /* 阶段条 */
+  .flow{display:flex;gap:10px;margin:18px 0;flex-wrap:wrap}
+  .step{flex:1;min-width:170px;background:rgba(255,255,255,.05);border:1px solid var(--line);
+    border-radius:13px;padding:14px;position:relative}
+  .step .n{position:absolute;top:-11px;left:14px;background:var(--gold);color:#2a1c00;
+    font-size:11px;font-weight:900;border-radius:99px;padding:2px 10px}
+  .step b{display:block;font-size:14px;margin:8px 0 5px;color:#fff}
+  .step span{font-size:12.5px;color:var(--dim);line-height:1.65;display:block}
+  .step.g{border-color:rgba(61,220,151,.45)}
+  .step.g .n{background:var(--grn);color:#04240f}
+  .step.r{border-color:rgba(255,77,109,.45)}
+  .step.r .n{background:var(--red);color:#fff}
+
+  .swatches{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+  .sw{width:76px;text-align:center;font-size:11px;color:var(--dim)}
+  .sw i{display:block;width:52px;height:52px;border-radius:50%;margin:0 auto 6px;
+    box-shadow:inset -6px -6px 14px rgba(0,0,0,.3),0 5px 12px rgba(0,0,0,.35)}
+
+  /* 皮肤展示网格 */
+  .skingrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:16px 0}
+  .skin{background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.028));
+    border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center;position:relative}
+  .skin img{width:100%;height:96px;object-fit:contain;display:block;
+    filter:drop-shadow(0 8px 16px rgba(0,0,0,.5))}
+  .skin .nm2{font-size:12.5px;font-weight:700;color:#fff;margin-top:6px}
+  .skin .lb{font-size:11px;color:var(--dim);margin-top:2px;min-height:15px}
+  .skin .pr2{font-size:12px;color:var(--gold);font-weight:700;margin-top:5px}
+  .skin .pr2.free{color:var(--grn)}
+  .skin .rr{position:absolute;top:8px;right:8px;font-size:9px;padding:1px 7px;border-radius:99px;font-weight:800}
+
+  .callout{background:linear-gradient(90deg,rgba(255,77,109,.14),rgba(255,77,109,.03));
+    border-left:4px solid var(--red);border-radius:0 12px 12px 0;padding:13px 18px;margin:18px 0;font-size:13.5px}
+  .callout.ok{background:linear-gradient(90deg,rgba(61,220,151,.14),rgba(61,220,151,.03));border-left-color:var(--grn)}
+
+  .files{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;padding:6px 20px 16px;margin:18px 0}
+  .files code{display:inline-block}
+
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);
+    text-align:center;color:#5f6c8f;font-size:12px;line-height:1.9}
+  @media(max-width:640px){
+    .grid2{grid-template-columns:1fr}
+    .cover h1{font-size:27px}
+    .wrap{padding:34px 16px 70px}
+    table{font-size:12.5px}
+    th,td{padding:9px 10px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 封面 ============ -->
+  <div class="cover">
+    <div class="kicker">GAME DESIGN PROPOSAL</div>
+    <h1>吞噬大作战 · 音响Boss</h1>
+    <div class="sub">吞噬成长类小游戏 · 玩法分析 &amp; 功能扩展方案　<b style="color:#ffd23f">v2.0</b></div>
+    <div class="metaline">
+      <span class="tag gold">Boss Rush：3 个 Boss</span>
+      <span class="tag grn">核心机制：吃掉核心物</span>
+      <span class="tag">10 套实图皮肤</span>
+      <span class="tag">冲刺 + 局内进化</span>
+      <span class="tag">网页 H5</span>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>先说一句实话：</b>你发的抖音链接 <code>v.douyin.com/pzrDmkkBPaM</code> 解析后指向的是一个
+    <b>「原声（BGM）分享页」</b>（作者：墨夏汐），页面里只有音乐，看不到游戏的玩法画面。
+    所以本方案里对"原游戏"的拆解，是基于你确认的<b>「吞噬成长类」</b>玩法框架来做的，
+    后续你补充几段游戏录屏，我可以把「原玩法分析」这一节替换成精确版本。
+  </div>
+
+  <!-- ============ 一 ============ -->
+  <h2><span class="no">01</span>原玩法拆解：吞噬成长类为什么容易上手、也容易腻</h2>
+
+  <h3>核心循环</h3>
+  <p>一个极短的闭环，通常 8~15 秒就能跑一轮：</p>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><b>移动</b><span>单摇杆 / 鼠标 / 手指拖动，零学习成本</span></div>
+    <div class="step"><span class="n">2</span><b>吞噬</b><span>碰到比自己小的食物或敌人就吃掉，体积、分数立即上涨</span></div>
+    <div class="step"><span class="n">3</span><b>变大</b><span>体积增长带来"我变强了"的即时正反馈</span></div>
+    <div class="step"><span class="n">4</span><b>吃更大的</b><span>原本追着你跑的敌人，现在反过来被你一口吞掉</span></div>
+  </div>
+
+  <h3>爽点在哪</h3>
+  <ul>
+    <li><strong>即时反馈极强</strong>——每一次吞噬都有体积、分数、音效、粒子四重反馈。</li>
+    <li><strong>滚雪球快感</strong>——"从被追赶到碾压全场"的翻转，是这类游戏的核心情绪。</li>
+    <li><strong>上手门槛为零</strong>——不用教学，看三秒就会玩，极其适合短视频信息流投放。</li>
+    <li><strong>单局超短</strong>——30 秒到 3 分钟，天然适配碎片时间与"再来一局"。</li>
+  </ul>
+
+  <h3>但问题也很明显</h3>
+  <table>
+    <thead><tr><th style="width:34%">问题</th><th>后果</th></tr></thead>
+    <tbody>
+      <tr><td><b>缺少高潮点</b></td><td>一条平缓的曲线，玩到后面只是在"刷数字"，没有紧张感峰值，也记不住任何瞬间。</td></tr>
+      <tr><td><b>没有成长系统</b></td><td>每局从零开始，玩家攒不下任何东西，"我变强了"的感知只存在于单局内。</td></tr>
+      <tr><td><b>没有目标感</b></td><td>没有 Boss、没有关卡、没有成就，玩家不知道"玩到什么时候算赢"。</td></tr>
+      <tr><td><b>没有社交钩子</b></td><td>没有分享、没有排行、没有炫耀点，天然缺少自传播。</td></tr>
+      <tr><td><b>变现触点少</b></td><td>没有可消耗的货币、没有皮肤、没有"看广告换奖励"的动机。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout ok">
+    <b>本方案的整体思路：</b>保留原游戏"零门槛 + 即时爽感"的骨架不动，
+    在它上面装三根新柱子——<b>一个 Boss（高潮点）</b>、<b>一套积分皮肤（长线目标）</b>、
+    <b>一组日常系统（留存与传播）</b>。
+  </div>
+
+  <!-- ============ 二 ============ -->
+  <h2><span class="no">02</span>Boss 方案：3 个 Boss 的 Boss Rush</h2>
+
+  <p>单局改成 <b>「打穿 3 个 Boss 才算通关」</b> 的关卡结构：第 1 个 Boss 在 <b>42 秒</b>登场，
+  击败后 <b>12 秒</b>下一个接上，血量、体积、移动速度、攻击频率逐级递增。</p>
+  <p>三个 Boss <b>共用同一个核心机制——吃掉它的"核心物"就能破防</b>——
+  但核心物、弹幕形态、战斗节奏完全不同，保证三关打起来是三种手感。</p>
+
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:20%">Boss</th><th style="width:14%">核心物</th><th>弹幕 / 攻击方式</th><th style="width:12%">击败奖励</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>1</b></td>
+        <td><b>袋鼠 DJ</b><br><span style="color:#93a0c4;font-size:12px">音响三兄弟</span></td>
+        <td>音响 ×3</td>
+        <td><b>音浪环</b>：以自身为圆心向外扩散的红色声波环，阶段越高波段越多，必须走位穿过</td>
+        <td>1,200 分</td>
+      </tr>
+      <tr>
+        <td><b>2</b></td>
+        <td><b>魔芋爽辣王</b><br><span style="color:#93a0c4;font-size:12px">辣味地狱</span></td>
+        <td>辣包 ×3</td>
+        <td><b>辣油散射</b>：8~17 发子弹整圈放射，密度随阶段提高，考验路线规划与冲刺切入</td>
+        <td>1,600 分</td>
+      </tr>
+      <tr>
+        <td><b>3</b></td>
+        <td><b>高数压轴</b><br><span style="color:#93a0c4;font-size:12px">期末第八版</span></td>
+        <td>答案卷 ×3</td>
+        <td><b>蛇形函数线</b>：从 Boss 射出一条会发光的曲线，整体朝你冲过来、路径按正弦摆动像蛇一样游走，一路前进直到飞出地图；<b>被线扫到就掉血</b>，只能靠走位或冲刺避开</td>
+        <td>2,200 分</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note quiet">
+    <b>一个省钱的小设计：</b>Boss 2 和 Boss 3 的形象<b>直接复用了对应的皮肤贴图</b>
+    （魔芋爽、高等数学），不需要额外画任何美术资源 —— 三个 Boss 的视觉成本 = 0。
+    后续要加第 4、第 5 个 Boss，同样只要出一套皮肤图就行。
+  </div>
+
+  <h4>Boss 1 · 袋鼠 DJ 的形象来源</h4>
+  <p>你发的那张黄色袋鼠图，我已经处理好了：<strong>去掉白底、裁掉多余留白、羽化边缘</strong>，
+  生成了 Boss 精灵图（420px）和头像（128px），直接用在游戏里。</p>
+
+  <h3>核心机制：吃掉它的核心物</h3>
+  <p>这是整个 Boss 战的灵魂，三个 Boss 通用。3 个核心物绕着 Boss 转圈，在两种状态间循环"换碟"：</p>
+
+  <div class="flow">
+    <div class="step r">
+      <span class="n">护体期 ≈ 4.6 秒</span>
+      <b>核心物贴身高亮红色</b>
+      <span>挂着护盾，此时撞上去<span style="color:#ff8fa3">会被反伤掉血</span>，只能躲。</span>
+    </div>
+    <div class="step g">
+      <span class="n">弹出期 ≈ 2.2 秒</span>
+      <b>核心物脱离本体、向外漂</b>
+      <span>变绿、发光、头顶弹出<b style="color:#3ddc97">「吃掉它！」</b>提示——这是唯一的输出窗口。</span>
+    </div>
+    <div class="step">
+      <span class="n">吃掉 = 进阶</span>
+      <b>Boss 少一个核心物</b>
+      <span>核心物被吞掉后 Boss 进入下一阶段：移动更快、出手更频繁，逼着玩家再抓下一次机会。</span>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>为什么这样设计：</b>它把"无脑吃"升级成了<b>"看节奏、抓时机"</b>。
+    玩家第一次打会贪，被电到掉血；第二次就学会"等它变绿再冲"。
+    一个 Boss 教会了玩家一个新技巧——这就是"关卡"的意义。<br>
+    同时核心物 = 可视化进度条，玩家一眼就知道"还差几个"。
+  </div>
+
+  <h3>吃掉之后奖励什么</h3>
+  <p>如果吃掉核心物只是"没反应"，玩家不会想做第二次。所以每次吞掉一个核心物，玩家立刻获得持续约 10 秒的
+  <strong>【核心之力】</strong>：</p>
+  <ul>
+    <li><strong>磁铁</strong>（240 范围内食物自动飞向你）</li>
+    <li><strong>加速</strong>（移动速度 +55%）</li>
+    <li><strong>双倍分</strong>（所有得分 ×2）</li>
+    <li><strong>破格吞噬</strong>（普通状态下只能吃比你小的敌人，此时可以吃掉比你大的）</li>
+  </ul>
+  <div class="callout ok">
+    <b>收益设计：</b>吃核心物不只是"打 Boss 的进度"，它本身就是一个超强 Buff。
+    于是玩家面对的问题是——<b>我要不要为了这个 Buff 冒险冲进去？</b>
+    风险和收益同时拉满，这才是好玩的决策。
+  </div>
+
+  <h3>Boss 的攻击手段</h3>
+  <table>
+    <thead><tr><th style="width:26%">招式</th><th>表现</th><th style="width:22%">阶段</th></tr></thead>
+    <tbody>
+      <tr><td><b>音浪环</b>（Boss 1）</td><td>以 Boss 为圆心扩散的红色声波圆环，穿过去就掉血</td><td>全程，阶段越高波段越多</td></tr>
+      <tr><td><b>辣油散射</b>（Boss 2）</td><td>8~17 发粉丝弹整圈放射，缝隙随阶段变窄</td><td>全程</td></tr>
+      <tr><td><b>蛇形函数线</b>（Boss 3）</td><td>向玩家方向射出正弦蛇行曲线，持续前进直到出界，碰到即掉血</td><td>全程</td></tr>
+      <tr><td><b>召唤小弟</b></td><td>从 Boss 身边弹出新的 AI 团子</td><td>第 2 阶段起</td></tr>
+      <tr><td><b>本体碰撞</b></td><td>贴到 Boss 身上会被弹开并受伤</td><td>第 2 阶段起</td></tr>
+    </tbody>
+  </table>
+
+  <h3>击败之后</h3>
+  <p>3 个核心物全部吃掉 → Boss 倒地 → 12 秒后下一个 Boss 登场。
+  打穿第 3 个 Boss 才算 <strong>通关（VICTORY）</strong>。奖励：</p>
+  <ul>
+    <li>每个核心物：积分 <strong>+350 / 450 / 600</strong>（按 Boss 递增），并立刻获得【核心之力】</li>
+    <li>击败每个 Boss：本局分数 <strong>+1,200 / 1,600 / 2,200</strong></li>
+    <li>通关：解锁<strong>传说皮肤【wjh】</strong>并自动装备（唯一不能用积分买到的皮肤）</li>
+    <li>弹出<strong>战报卡</strong>，一键保存 / 复制文案去抖音发布</li>
+  </ul>
+  <div class="callout">
+    <b>难度曲线原则：</b>第 1 关必须"能教会玩家"，而不是"能难住玩家"。
+    所以 Boss 1 的护卫期最长、弹幕最慢，玩家第一次贪上去被电一次，第二次就学会了——<b>先教学，再考试</b>。
+  </div>
+
+  <!-- ============ 三 ============ -->
+  <h2><span class="no">03</span>玩法升级 · v2.0</h2>
+  <p>原版只有「移动 + 吞噬」两个动作，玩久了会觉得<b>操作空间太小、没有技术门槛</b>。
+  v2.0 加了三层新东西，把"无脑吃"变成"有操作的吃"。</p>
+
+  <h3>1. 冲刺 Dash —— 让操作有技术含量</h3>
+  <div class="flow">
+    <div class="step"><span class="n">触发</span><b>SPACE / 双击屏幕</b><span>朝当前移动方向瞬冲，0.22 秒内速度 ×3.2，并获得 <b>3 秒无敌</b></span></div>
+    <div class="step"><span class="n">冷却</span><b>3 秒</b><span>HUD 右下角圆形按钮实时显示冷却读秒，冷却中会变暗</span></div>
+    <div class="step g"><span class="n">用途</span><b>躲弹幕 · 抢窗口</b><span>躲音浪环、穿过辣油弹幕、抢 Boss 核心物弹出的 2.2 秒窗口</span></div>
+  </div>
+  <p>有了冲刺，「吃音响」就从<b>运气行为</b>变成了<b>可以练习的技术动作</b>——
+  这是让玩家愿意"再来一局"的关键。</p>
+
+  <h3>2. 局内进化 —— 每局都不一样</h3>
+  <div class="note quiet">
+    <b>选卡期间无敌：</b>升级弹窗弹出时世界会暂停，但「弹出瞬间」和「选完恢复的那一帧」
+    玩家很可能正贴着大鱼或 Boss，容易出现"刚选完就掉命"的挫败感。
+    因此选卡全程无敌，<b>选完回到游戏还会保留 1.6 秒无敌缓冲</b>，玩家身上会亮起金色光环。
+  </div>
+  <p>吃食物、吃敌人会累积经验，<b>升到 2~9 级时游戏暂停并弹出「三选一」进化卡</b>，
+  选中的强化本局永久生效。8 种进化里随机抽 3 张：</p>
+  <table>
+    <thead><tr><th style="width:18%">进化</th><th style="width:30%">效果</th><th>为什么这样设计</th></tr></thead>
+    <tbody>
+      <tr><td><b>巨化</b></td><td>体积 +12%</td><td>直接变强，也让你更容易被大团子盯上，风险同步上升</td></tr>
+      <tr><td><b>疾风</b></td><td>移动速度 +15%</td><td>走位流的核心，躲弹幕更从容</td></tr>
+      <tr><td><b>吸星</b></td><td>磁吸范围 +45%</td><td>滚雪球加速，适合"吃就完事"的打法</td></tr>
+      <tr><td><b>暴食</b></td><td>可以吞下更大的敌人</td><td>把"躲"变成"吃"，改变整局的风险收益判断</td></tr>
+      <tr><td><b>连击大师</b></td><td>连击倍率上限 +1</td><td>奖励不断手的激进玩法，配合音效反馈很爽</td></tr>
+      <tr><td><b>铁壁</b></td><td>生命立刻回满 + 5 秒无敌</td><td>容错型选择，新手也能明显感到变强</td></tr>
+      <tr><td><b>闪充</b></td><td>冲刺冷却 −0.6 秒</td><td>让冲刺从"应急手段"变成"常规操作"</td></tr>
+      <tr><td><b>丰收</b></td><td>吃食物额外 +1 经验</td><td>加速升级曲线，越早拿收益越高</td></tr>
+    </tbody>
+  </table>
+  <div class="callout ok">
+    <b>设计意图：</b>同一套操作，每一局能走出不同的 build。
+    这等于用<b>零美术成本</b>拿到了 roguelite 的重复可玩性 —— 也是最适合网页小游戏的性价比方案。
+  </div>
+
+  <h3>3. 地图放大 + 镜头跟随</h3>
+  <p>原版的可玩区域就是整块屏幕，空间偏紧。v2 把<b>世界放大到屏幕的 1.45 倍</b>，
+  镜头跟着海豹走，活动空间和鱼的分布范围都变大了；同时把<b>除 Boss 外的奶龙整体缩小 15%</b>，
+  画面更透气。做法上仍然零侵入原版：<code>W/H</code> 改指世界尺寸，绘制鱼/玩家/子弹时统一平移镜头，
+  背景固定在屏幕上铺满，指针坐标按「屏幕 → 世界」换算。</p>
+
+  <h3>4. Boss Rush —— 把"无限刷分"变成"一局有终点"</h3>
+  <p>原来打完一个 Boss 就结束了，<b>单局缺一个明确的通关目标</b>。
+  现在改成 <b>连打 3 个 Boss 才算通关</b>，难度、体积、攻击频率逐级递增：</p>
+  <div class="flow">
+    <div class="step"><span class="n">0 ~ 42 秒</span><b>发育期</b><span>吞噬成长、随手吃道具、升到 3~5 级，为 Boss 战攒底子</span></div>
+    <div class="step r"><span class="n">第 1 关</span><b>袋鼠 DJ</b><span>最简单，用音浪环"教"会玩家怎么躲、怎么抢核心物</span></div>
+    <div class="step r"><span class="n">第 2 关</span><b>魔芋爽辣王</b><span>辣油散射弹幕，逼玩家用冲刺穿缝隙</span></div>
+    <div class="step r"><span class="n">第 3 关</span><b>高数压轴</b><span>蛇形函数线贴着你游过来，被扫到就掉血，只能靠走位和冲刺甩开，最终考验</span></div>
+  </div>
+  <div class="callout">
+    <b>通关规则（v2 调整）：</b>长到目标体型<b>不再直接通关</b> —— 体型到顶只是停住（此时体型约为 Boss 的 54%）。
+    <b>必须把 3 个 Boss 全部击败才算通关</b>：第 1 关打完 1 个 Boss 才算过关，
+    第 2 关累计 2 个，第 3 关累计 3 个。想跳过 Boss 直接刷分是行不通的。
+  </div>
+  <p>击败后 <b>12 秒</b>下一个 Boss 接上——这个间隔刚好够玩家喘口气、吃几口食物，
+  又不会掉紧张感。通关后解锁传说皮肤<b>【wjh】</b>。</p>
+
+  <h2><span class="no">04</span>积分 + 皮肤系统</h2>
+
+  <h3>积分从哪来（产出）</h3>
+  <table>
+    <thead><tr><th style="width:30%">来源</th><th style="width:26%">数值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>吞噬食物</td><td>约 0.23×连击倍率（食物体积）</td><td>本局基础产出，占比最大</td></tr>
+      <tr><td>吞噬敌人</td><td>约 1.5×连击倍率（敌人半径）</td><td>风险越高收益越高</td></tr>
+      <tr><td>连击加成</td><td>每 5 连 ×1.5，最高 <b>×4</b></td><td>鼓励连续吞噬，不中断</td></tr>
+      <tr><td>吃掉音响</td><td><b>+350</b> / 个</td><td>核心高光行为的奖励</td></tr>
+      <tr><td>击败 Boss</td><td><b>+1,200</b></td><td>单局最大一笔</td></tr>
+      <tr><td>每日签到</td><td>80 起，连续签到递增至 240</td><td>日留存</td></tr>
+      <tr><td>每日任务</td><td>4 条任务共 500</td><td>日活</td></tr>
+      <tr><td>成就</td><td>7 个成就共 2,500</td><td>长线目标</td></tr>
+    </tbody>
+  </table>
+
+  <h3>皮肤（消耗）</h3>
+  <p><b>10 款皮肤，4 档稀有度，全部已接入实图</b>（不是色块占位）。
+  <b>10 套共用同一只黄色小生物</b>——姿态、大小、材质完全一致，靠<b>上衣与尾巴造型</b>区分。
+  皮肤<strong>只改外观、不动数值</strong>，这是保证竞技公平的底线。
+  获取途径：积分直购 + 盲盒抽奖 + Boss 通关奖励。</p>
+
+  <div class="skingrid">
+    <div class="skin">
+      <span class="rr r1">普通</span>
+      <img src="assets/skins/_processed/base.png" alt="初始模型">
+      <div class="nm2">初始模型</div><div class="lb">你的原始模样</div>
+      <div class="pr2 free">免费</div>
+    </div>
+    <div class="skin">
+      <span class="rr r1">普通</span>
+      <img src="assets/skins/_processed/moyushuang.png" alt="魔芋爽">
+      <div class="nm2">魔芋爽</div><div class="lb">辣味开胃</div>
+      <div class="pr2 gold">300 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r2">稀有</span>
+      <img src="assets/skins/_processed/binghongcha.png" alt="冰红茶">
+      <div class="nm2">冰红茶</div><div class="lb">冰力十足</div>
+      <div class="pr2 gold">600 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r2">稀有</span>
+      <img src="assets/skins/_processed/leshi.png" alt="乐事薯片">
+      <div class="nm2">乐事薯片</div><div class="lb">超值分享</div>
+      <div class="pr2 gold">1,000 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r3">史诗</span>
+      <img src="assets/skins/_processed/gaodengshuxue.png" alt="高等数学">
+      <div class="nm2">高等数学</div><div class="lb">上册 第八版</div>
+      <div class="pr2 gold">1,500 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r3">史诗</span>
+      <img src="assets/skins/_processed/xiandaishuxue.png" alt="线性代数">
+      <div class="nm2">线性代数</div><div class="lb">第六版 同济</div>
+      <div class="pr2 gold">2,000 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r3">史诗</span>
+      <img src="assets/skins/_processed/jiahao.png" alt="嘉豪">
+      <div class="nm2">嘉豪</div><div class="lb">黑色卫衣 酷</div>
+      <div class="pr2 gold">2,600 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r4">传说</span>
+      <img src="assets/skins/_processed/naiyu.png" alt="奶鱼">
+      <div class="nm2">奶鱼</div><div class="lb">贝壳上衣 + 绿色鱼尾</div>
+      <div class="pr2 gold">3,200 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r4">传说</span>
+      <img src="assets/skins/_processed/xiangjiao.png" alt="香蕉">
+      <div class="nm2">香蕉</div><div class="lb">香蕉皮尾巴</div>
+      <div class="pr2 gold">4,000 积分</div>
+    </div>
+    <div class="skin">
+      <span class="rr r4">传说</span>
+      <img src="assets/skins/_processed/wjh.png" alt="wjh">
+      <div class="nm2">wjh</div><div class="lb">蓝发 · 通关解锁</div>
+      <div class="pr2 free">通关奖励</div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:14%">稀有度</th><th style="width:22%">皮肤</th><th style="width:18%">价格</th><th>外观表现</th></tr></thead>
+    <tbody>
+      <tr><td>普通</td><td>初始模型</td><td><b>免费</b></td><td>默认形象，所有玩家拥有</td></tr>
+      <tr><td>普通</td><td>魔芋爽</td><td>300</td><td>白红配色 + 印花，入门第一款</td></tr>
+      <tr><td>稀有</td><td>冰红茶</td><td>600</td><td>亮黄 + 冰蓝标志，带<b>拖尾粒子</b></td></tr>
+      <tr><td>稀有</td><td>乐事薯片</td><td>1,000</td><td>玫红 + 大圆形标志，带<b>拖尾粒子</b></td></tr>
+      <tr><td>史诗</td><td>高等数学</td><td>1,500</td><td>教材绿 + 书本封面，<b>外发光 + 拖尾</b></td></tr>
+      <tr><td>史诗</td><td>线性代数</td><td>2,000</td><td>薰衣草紫 + 层叠弧线，<b>外发光 + 拖尾</b></td></tr>
+      <tr><td>史诗</td><td>嘉豪</td><td>2,600</td><td>黑色连帽卫衣 + 白色几何标志，<b>外发光</b></td></tr>
+      <tr><td>传说</td><td>奶鱼</td><td>3,200</td><td>白色贝壳上衣 + <b>青绿色鱼尾</b>（美人鱼下半身），<b>发光 + 拖尾</b></td></tr>
+      <tr><td>传说</td><td>香蕉</td><td>4,000</td><td><b>不穿上衣</b>，尾巴换成翻卷的香蕉皮造型，<b>发光 + 拖尾</b></td></tr>
+      <tr><td>传说</td><td>wjh</td><td><b>通关解锁</b></td><td>黑色宽松 T 恤 + 白色几何标志，<b>浅蓝色头发 + 黑色头带 + 脸颊星星与创可贴 + 十字耳环</b>，游戏内带蓝色拖尾与发光</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note quiet">
+    <b>设计说明：</b>所有皮肤都是「同一个初始模型 + 不同服装」，
+    这样在商店里排成一排时角色辨识度最高，也方便后续持续加新衣服（<b>皮肤 = 服装包</b>，扩展成本极低）。
+    <br>想调整名字 / 价格 / 稀有度？改 <code>src/game-src.html</code> 里的 <code>SKINS</code> 数组，
+    再跑一次 <code>python3 build.py</code> 就行。
+  </div>
+
+  <h3>获取方式：直购 + 盲盒</h3>
+  <div class="grid2">
+    <div class="card">
+      <span class="em">💰</span>
+      <h4>积分直购</h4>
+      <p>看中哪个买哪个，价格透明。适合目标明确、想一步到位的玩家。</p>
+    </div>
+    <div class="card">
+      <span class="em">🎁</span>
+      <h4>皮肤盲盒（600 积分）</h4>
+      <p>随机开出一款<strong>未拥有</strong>的皮肤。<strong>永不重复</strong>，抽到后期必然出传说——
+      用"稳赚不亏"的体验降低决策成本，同时消耗掉溢出的积分。</p>
+    </div>
+  </div>
+
+  <h3>皮肤是怎么做出来的（已完成）</h3>
+  <p>你给的那张黄色小生物图被定为<strong>初始模型</strong>，其余 9 套则用
+  <strong>"图生图"换装</strong>的方式，让同一个初始模型分别穿上每套衣服。
+  制作时严格守住三条规范：</p>
+  <ul>
+    <li><b>姿态与短尾对齐原图</b>——保持角色原本的直立姿态，左下那根短尾的形状、长度、朝向原样保留，
+    不拉长、不变成鱼尾（做法是先把参考图校正到正确角度再喂给模型）</li>
+    <li><b>光滑卡通材质</b>——像动画电影角色那样表面光滑细腻，<b>没有毛绒 / 绒毛 / 布料纤维质感</b></li>
+    <li><b>只穿上衣，不穿裤子</b>——保持整个系列的一致性</li>
+  </ul>
+  <p><b>统一性是怎么保证的：</b>所有皮肤共用同一张角色参考图（原图校正过角度），
+  生成后用<b>按不透明面积归一化</b>的方式统一视觉大小，再统一抠白底 → 裁边 →
+  缩放到 256px → 以 WebP 内联进游戏（单文件仅 230 KB）。
+  所以无论换上哪件衣服，角色在商店和游戏里都是同一个大小、同一种质感。</p>
+  <p>这样做的好处是：<strong>6 个皮肤看起来是同一个角色的不同状态</strong>，
+  而不是 6 个互不相干的图。后续要加新皮肤，只要再给一张衣服图就行，
+  扩展成本几乎为零 —— <b>皮肤 = 服装包</b>。</p>
+
+  <div class="note quiet">
+    <b>想换图 / 改价 / 改名字？</b><br>
+    把新图按 <code>皮肤id.png</code> 的命名丢进 <code>assets/skins/</code>，
+    或直接改 <code>src/game-src.html</code> 里的 <code>SKINS</code> 数组
+    （<code>name</code> 名字 / <code>price</code> 价格 / <code>rare</code> 稀有度 1~4 / <code>label</code> 副标题），
+    然后跑一次 <code>python3 build.py</code> 即可，几秒出新版本。
+    <br>详细规格见 <code>assets/skins/README.txt</code>。
+  </div>
+
+  <h3>经济节奏设计</h3>
+  <table>
+    <thead><tr><th style="width:30%">目标</th><th>所需</th><th style="width:24%">预计局数</th></tr></thead>
+    <tbody>
+      <tr><td>第一款皮肤（魔芋爽）</td><td>300 积分</td><td><b>1 局内</b>（几分钟）</td></tr>
+      <tr><td>凑齐前 3 款</td><td>约 1,900 积分</td><td>2~4 局</td></tr>
+      <tr><td>史诗皮肤（高等数学）</td><td>1,500 积分</td><td>3~5 局</td></tr>
+      <tr><td>顶级传说皮肤（香蕉）</td><td>4,000 积分</td><td>8~12 局（或每日任务 / 签到加速）</td></tr>
+      <tr><td>传说皮肤（wjh）</td><td>免费</td><td>打穿 3 个 Boss 即可解锁</td></tr>
+    </tbody>
+  </table>
+  <div class="callout ok">
+    一局中位产出约 <b>900 积分</b>。前 3 款皮肤保证在 10 分钟内就能拿到——
+    <b>先给正反馈，再谈长线追求</b>。这个节奏对"看广告加速"和"直接购买"两种变现都友好。
+  </div>
+
+  <!-- ============ 四 ============ -->
+  <h2><span class="no">05</span>我额外加的几个功能</h2>
+  <p>除了你点名要的「Boss + 吃核心物 + 积分换皮肤」，以及 §03 的三大玩法升级（冲刺 / 进化 / Boss Rush），
+  我顺手补齐了一套完整的留存/传播骨架。<strong>以下全部已经在原型里跑起来了</strong>：</p>
+
+  <table>
+    <thead><tr><th style="width:8%">#</th><th style="width:26%">功能</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><b>连击 Combo</b></td><td>连续吞噬不断档就叠倍率，5 连 ×1.5，最高 ×4。屏幕上会弹出巨大的 "12 COMBO ×2.0"。打断机制逼玩家不停手。</td></tr>
+      <tr><td>2</td><td><b>道具掉落</b></td><td>吞掉敌人有 25% 掉落：🧲磁铁 / ⚡加速 / 🛡护盾 / ✖️2双倍分 / ⏳时停。给单调的吞噬过程加随机惊喜。</td></tr>
+      <tr><td>3</td><td><b>每日任务</b></td><td>4 条日常（吃 60 个食物 / 8 连击 / 完成 2 局 / 吃 1 个音响），共 500 积分。每天 0 点刷新。</td></tr>
+      <tr><td>4</td><td><b>每日签到</b></td><td>连续签到奖励递增（80 → 100 → 120 …最高 240），断签清零。最便宜的日留存钩子。</td></tr>
+      <tr><td>5</td><td><b>本机排行榜</b></td><td>保留 Top 5 历史最高分，可自定义昵称。后续接一个轻量后端即可升级成全网榜 / 好友榜。</td></tr>
+      <tr><td>6</td><td><b>成就系统</b></td><td>7 个成就：开张大吉、连击达人、小有名气、<b>吃音响的人</b>、<b>音响终结者</b>、收藏家、大团子，共 2,500 积分。</td></tr>
+      <tr><td>7</td><td><b>战报卡分享</b></td><td>一局结束自动生成竖版战报图（分数 / 连击 / 吃音响数 / 皮肤），底部带 <b>「抖音，记录美好生活」</b>，支持保存图片 + 一键复制文案。</td></tr>
+      <tr><td>8</td><td><b>音效 + BGM</b></td><td>原版 3 段随机「吃」音与死亡/胜利音<b>原样保留</b>；新增的吞噬、连击、吃核心物、胜利音用 WebAudio 实时合成；<b>Boss 出场</b>使用你提供的抖音原声（2.7 秒，已内联进单文件）。</td></tr>
+      <tr><td>9</td><td><b>动态镜头与打击感</b></td><td>体积越大视野越广（自动缩放）；受伤红屏、屏幕震动、吞噬挤压动画、粒子爆裂。</td></tr>
+      <tr><td>10</td><td><b>召唤 Boss 快捷键</b></td><td>右上角 ♪ 按钮，立刻把袋鼠 DJ 叫出来。方便你录视频、演示、调试。</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============ 五 ============ -->
+  <h2><span class="no">06</span>分享与传播设计（网页版）</h2>
+  <p>你提到"在抖音，记录美好生活"——这句话不该只是印在图上，它应该是一条完整的传播链。
+  网页版不需要抖音 SDK，靠<strong>一张图 + 一段文案 + 一个链接</strong>就能跑通：</p>
+
+  <div class="flow">
+    <div class="step"><span class="n">A</span><b>高光时刻</b><span>吃掉音响 / 吃掉 Boss 的瞬间，就是天然的短视频素材（有动作、有反转、有字幕）。</span></div>
+    <div class="step"><span class="n">B</span><b>战报卡</b><span>自动生成竖版 720×1000 战报图，带分数、连击、皮肤头像和 slogan，直接当视频封面或图文封面。</span></div>
+    <div class="step"><span class="n">C</span><b>挑战文案</b><span>一键复制的挑衅式文案："我把袋鼠 DJ 的音响吃了，你敢吗？"——比"我得了 6930 分"传播力强得多，可发任意平台。</span></div>
+    <div class="step"><span class="n">D</span><b>链接回流</b><span>把游戏部署到一个网址，朋友点开直接玩，不用下载、不用登录，形成闭环。</span></div>
+  </div>
+
+  <div class="note quiet">
+    <b>网页版要做的三件小事（都不影响现有玩法代码）：</b>
+    1）把 <code>index.html</code> 传到一个静态托管（如对象存储 / Vercel / GitHub Pages），拿到一条网址；
+    2）加一点数据埋点（开始 / 结算 / 吃到音响 / 分享），用来看留存和分享率；
+    3）如果要"强制分享后领奖励"，网页版做不到自动验证，改成"分享即送"或"分享按钮点了就送"即可。
+  </div>
+
+  <!-- ============ 六 ============ -->
+  <h2><span class="no">07</span>开发排期（纯网页版路线）</h2>
+  <table>
+    <thead><tr><th style="width:12%">阶段</th><th style="width:40%">内容</th><th style="width:14%">工期</th><th>产出</th></tr></thead>
+    <tbody>
+      <tr><td><b>P0</b></td><td>可玩原型：核心循环 + Boss + 积分皮肤 + 日常系统</td><td>已完成</td><td><code>index.html</code></td></tr>
+      <tr><td><b>P1</b></td><td>皮肤立绘替换（你出图）+ 手感打磨 + UI 收尾</td><td>随时可做</td><td>视觉完整版</td></tr>
+      <tr><td><b>P2</b></td><td>系统补齐：云存档（可选）、任务后台、数值调优、埋点</td><td>1 周</td><td>功能完整版</td></tr>
+      <tr><td><b>P3</b></td><td>网页上线：静态托管 / 域名 / 分享链接 / 数据看板</td><td>2~3 天</td><td>可访问的网址</td></tr>
+      <tr><td><b>P4</b></td><td>内容扩展：新增 2 个 Boss、关卡章节、节日活动</td><td>2 周</td><td>长线运营版</td></tr>
+      <tr><td><b>P5</b></td><td>数据调优、投放素材、迭代玩法</td><td>持续</td><td>迭代版本</td></tr>
+    </tbody>
+  </table>
+  <p>技术路线建议：既然是纯网页版，有两条路——<br>
+  <b>A. 接着用现在这套原生 Canvas 代码</b>（单文件、零依赖、加载极快，改起来最自由，适合快速迭代）；
+  <b>B. 迁移到 Cocos Creator</b>（导出 Web，编辑器可视化调参、方便加动画和关卡，适合内容要持续扩张时）。
+  建议先走 A 把玩法跑通、验证留存，等要加"多 Boss + 章节"时再考虑 B。</p>
+
+  <!-- ============ 七 ============ -->
+  <h2><span class="no">08</span>还需要补的资源清单</h2>
+  <table>
+    <thead><tr><th style="width:22%">类别</th><th style="width:30%">已有</th><th>还需补充</th></tr></thead>
+    <tbody>
+      <tr><td><b>Boss 形象</b></td><td>袋鼠 DJ（你提供的图，已抠图可用）</td><td>Boss 2/3 已复用皮肤图，视觉成本为 0；后续加 Boss 只需再出一套皮肤图</td></tr>
+      <tr><td><b>玩家皮肤</b></td><td><b>10 套已全部接入实图</b></td><td>按需追加新服装图即可，改完跑一次 <code>build.py</code></td></tr>
+      <tr><td><b>特效</b></td><td>粒子/音浪/护盾均为代码绘制</td><td>吞噬爆裂、升级光环、音响弹出、胜利结算 4 组序列帧</td></tr>
+      <tr><td><b>音频</b></td><td>音效全部代码合成，无版权风险</td><td>正式 BGM。<b>注意：</b>你分享的那条是抖音"原声"页，<strong>商用需先确认授权</strong>，建议直接买免版税曲库或用原创</td></tr>
+      <tr><td><b>UI</b></td><td>完整可用的深色霓虹风 UI</td><td>换成美术风格统一的正式 UI 切图</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============ 八 ============ -->
+  <h2><span class="no">09</span>风险提示</h2>
+  <div class="callout">
+    <b>版权是最大的一条。</b>
+    1）袋鼠形象如果来自第三方 IP（毛绒玩具/动画角色），正式上线前必须确认授权或重绘一个"神似但不同"的原创形象；
+    2）BGM 同理，抖音原声≠可商用素材。<br>
+    这两条建议在 P1 阶段就解决，别拖到上线才发现。
+  </div>
+  <ul>
+    <li><strong>难度曲线</strong>——Boss 三阶段要逐步加压，第一阶段必须能"教"会玩家吃音响，否则留存会在第一次 Boss 战崩掉。</li>
+    <li><strong>数值膨胀</strong>——体积上限、分数上限要有天花板，否则后期分数失去意义。</li>
+    <li><strong>公平性</strong>——皮肤绝不能加数值，否则排行榜和分享都会失去公信力。</li>
+    <li><strong>单局时长</strong>——建议控制在 90~150 秒，别超过 3 分钟，这是网页休闲小游戏的黄金区间。</li>
+  </ul>
+
+  <!-- ============ 交付 ============ -->
+  <h2><span class="no">10</span>落地方式：在原版上做加法</h2>
+  <p>拿到原版《神金海豹大作战》源码后，v2 改成 <b>「不修改原版一行代码，只追加扩展层」</b> 的方式实现：</p>
+  <table>
+    <thead><tr><th style="width:26%">原版保留</th><th>v2 新增</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>
+          · 指针控制小海豹游动<br>
+          · 吃奶龙变大、被大鱼咬掉血<br>
+          · 绿/橙/红三色危险提示<br>
+          · 简单/困难/地狱三档难度<br>
+          · 长到最大体型加冕「豹王」<br>
+          · <b>3 段随机「吃」音 + 死亡/胜利音效</b><br>
+          · <b>游戏名《神金海豹大作战》</b>
+        </td>
+        <td>
+          · <b>积分系统</b>（吃奶龙/连击/Boss 产出，本地持久化）<br>
+          · <b>皮肤商店</b>：10 套皮肤，积分兑换（默认的原版海豹形象不占用商店位）<br>
+          · <b>Boss 战</b>：袋鼠 DJ / 魔芋爽辣王 / 高数压轴，吃掉核心物破防（袋鼠身边的音符图标已换成外卖袋贴图）<br>
+          · <b>冲刺</b>：双击屏幕 / SPACE，3 秒冷却<br>
+          · <b>局内进化</b>：升级三选一，8 种强化<br>
+          · 连击倍率、Boss 血条、积分 HUD
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout ok">
+    <b>为什么要这么接：</b>扩展层在 &lt;/body&gt; 前追加一个独立 &lt;script&gt;，
+    通过读取原版全局状态（<code>player</code>/<code>fishes</code>/<code>score</code>/<code>lives</code>）
+    和挂钩 <code>drawPlayer</code>/<code>reset</code>/<code>endGame</code> 接入。
+    原版代码一个字没改 —— 以后你更新原版，把扩展层重新拼一次即可。
+  </div>
+  <p>顺带把原版素材做了无损优化：第 1、2 张图是**同一张**（去重），7 张 PNG 全部转 WebP，
+  文件从 <b>3078 KB 压到 652 KB</b>（原版音效原样保留，新增 Boss 出场音效约 30 KB）。</p>
+
+  <h2><span class="no">11</span>本次交付物</h2>
+  <div class="files">
+    <h4>1. 可玩原型 <code>/workspace/index.html</code></h4>
+    <p style="color:#c3cdea;font-size:13.5px;margin:6px 0 12px">
+      单文件、双击即玩，手机/电脑都能跑。<b>v2.0 已包含</b>：吞噬成长、AI 团子、<b>3 个 Boss 的 Boss Rush</b>、
+      吃掉核心物破防、<b>冲刺 Dash</b>、<b>局内进化三选一</b>、连击、道具、<b>10 套实图皮肤</b>与商店、
+      每日任务、签到、排行榜、成就、战报分享。
+      <br><b>10 套皮肤已全部接入实图</b>：初始模型、魔芋爽、冰红茶、乐事薯片、高等数学、线性代数、嘉豪、奶鱼、香蕉、袋鼠DJ。
+    </p>
+    <h4>2. 本方案 <code>/workspace/游戏策划方案.html</code></h4>
+    <p style="color:#c3cdea;font-size:13.5px;margin:6px 0 12px">你现在看的这份文档。</p>
+    <h4>3. Boss 图片资源 <code>/workspace/assets/</code></h4>
+    <p style="color:#c3cdea;font-size:13.5px;margin:6px 0 12px">
+      <code>boss.png</code>（去白底精灵图 420px）·
+      <code>boss-avatar.png</code>（128px 头像）·
+      <code>boss-shop.png</code>（256px 商店展示图）
+    </p>
+    <h4>4. 皮肤素材 <code>/workspace/assets/skins/</code></h4>
+    <p style="color:#c3cdea;font-size:13.5px;margin:6px 0 12px">
+      <b>10 套皮肤已全部接入</b>：初始模型（你给的黄色小生物）+ 4 套零食/饮料/教材服装 + 线性代数 + 嘉豪 + 奶鱼 + 香蕉 + 袋鼠DJ。
+      原图和脚本处理后的成品都在这，<code>README.txt</code> 里写了命名规则和替换方法。
+    </p>
+    <h4>5. 构建脚本 <code>/workspace/build.py</code> + 源码 <code>/workspace/src/game-src.html</code></h4>
+    <p style="color:#c3cdea;font-size:13.5px;margin:0">
+      要换皮肤图 / 改价格 / 改名字时：把新图按 <code>皮肤id.png</code> 放进 <code>assets/skins/</code>，
+      或直接改 <code>src/game-src.html</code> 里的 <code>SKINS</code> 数组，然后运行一次
+      <code>python3 build.py</code>，
+      脚本会自动<b>抠白底 → 裁边 → 缩放到 256px → Base64 内联进 index.html</b>，几秒出新版本。
+    </p>
+  </div>
+
+  <div class="callout ok">
+    <b>下一步你可以直接说：</b>"把魔芋爽换成 XXX 图" / "高等数学太贵了，改成 800" /
+    "再加一套 XX 皮肤" / "换个颜色"——我改完重跑一次脚本就出新版本。
+  </div>
+
+  <footer>
+    《吞噬大作战 · 音响Boss》玩法分析与功能扩展方案<br>
+    抖音，记录美好生活 · 方案 v1.0
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,1578 @@
+/* ============================================================================
+   《神金海豹大作战》v2 扩展层
+   ----------------------------------------------------------------------------
+   设计原则：原版代码一行不动。
+   本层以「追加脚本」的形式运行，通过读取原版全局状态 + 挂钩绘制/结算函数接入。
+   保留：原版玩法、手感、音效（3 段随机吃音 + WebAudio 死亡/胜利音）、名字。
+   新增：积分、皮肤系统、Boss 战（吃掉核心物破防）、冲刺、局内进化三选一。
+   ========================================================================== */
+(function () {
+'use strict';
+
+/* ---------------------------------------------------------------- 0. 样式 */
+const CSS = `
+#v2hud{position:fixed;top:56px;left:12px;right:12px;display:flex;justify-content:space-between;
+  align-items:center;color:#fff;font-size:13px;pointer-events:none;z-index:6;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#v2hud .pill{background:rgba(4,30,48,.55);border:1px solid rgba(255,255,255,.14);border-radius:10px;
+  padding:4px 10px;backdrop-filter:blur(6px);line-height:1.3}
+#v2hud b{color:#ffd54a;font-size:15px}
+#lvt{display:inline-block;background:linear-gradient(90deg,#ffd54a,#ff9d2e);color:#3a2400;border-radius:99px;
+  padding:0 6px;font-size:10px;font-weight:900;margin-left:4px;vertical-align:1px}
+#bossbar{position:fixed;top:92px;left:50%;transform:translateX(-50%);width:min(460px,82vw);z-index:6;
+  opacity:0;transition:opacity .3s;pointer-events:none}
+#bossbar.on{opacity:1}
+#bossbar .nm{display:flex;justify-content:space-between;font-size:12px;color:#fff;text-shadow:0 1px 3px #000;margin-bottom:3px}
+#bossbar .nm .tag{color:#ffb3c1}
+#bossbar .bar{height:12px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);overflow:hidden}
+#bossbar .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff9d2e,#ff3b3b);transition:width .25s}
+#dashbtn{position:fixed;right:18px;bottom:26px;width:76px;height:76px;border-radius:50%;
+  display:grid;place-items:center;line-height:1.15;text-align:center;z-index:7;cursor:pointer;
+  background:radial-gradient(circle at 35% 30%,rgba(120,220,255,.45),rgba(6,40,61,.9));
+  border:2px solid rgba(120,220,255,.6);backdrop-filter:blur(8px);box-shadow:0 8px 22px rgba(0,0,0,.35);
+  user-select:none;-webkit-user-select:none;transition:transform .1s, opacity .2s}
+#dashbtn b{font-size:16px;color:#eaf7ff;letter-spacing:2px}
+#dashbtn span{font-size:9px;color:#8fd6ff;letter-spacing:1px}
+#dashbtn.cd{opacity:.45}
+#dashbtn.cd b{font-size:20px;color:#9fb4c7;letter-spacing:0}
+#dashbtn:active{transform:scale(.93)}
+/* 面板可滚动：原版给 html,body 设了 touch-action:none + overflow:hidden，这里在面板打开时放开 */
+html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavior:none}
+.v2ov{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;justify-content:safe center;
+  background:rgba(4,30,48,.9);backdrop-filter:blur(8px);color:#fff;text-align:center;
+  padding:22px 20px calc(38px + env(safe-area-inset-bottom));overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+.v2ov>*{flex-shrink:0}
+.v2ov h2{color:#ffd54a;font-size:26px;margin-bottom:6px}
+.v2ov .sub{font-size:13px;color:#9fc0d4;margin-bottom:16px}
+#shopGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:11px;
+  width:min(760px,94vw);padding:4px}
+.skcard{background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.05));
+  border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px;cursor:pointer;
+  position:relative;transition:.14s;text-align:center}
+.skcard:active{transform:scale(.97)}
+.skcard.on{border-color:#ffd54a;box-shadow:0 0 0 1px #ffd54a,0 8px 22px rgba(255,213,74,.25)}
+.skcard.locked{opacity:.55;filter:grayscale(.5)}
+.skcard img{width:100%;height:92px;object-fit:contain;filter:drop-shadow(0 6px 12px rgba(0,0,0,.5))}
+.skcard .n{font-size:14px;font-weight:800;margin-top:7px}
+.skcard .l{font-size:11px;color:#9fc0d4;margin-top:2px;min-height:14px}
+.skcard .p{font-size:12px;font-weight:800;color:#ffd54a;margin-top:5px}
+.skcard .p.own{color:#6ee7a0}
+.skcard .rib{position:absolute;top:8px;right:8px;font-size:9px;font-weight:900;padding:2px 7px;border-radius:99px;
+  background:linear-gradient(90deg,#ffd54a,#ff9d2e);color:#3a2400}
+.skcard .rr{position:absolute;top:8px;left:8px;font-size:9px;font-weight:800;padding:2px 7px;border-radius:99px;
+  background:rgba(255,255,255,.16);color:#dbe9f2}
+#lvCards{display:flex;flex-direction:column;gap:12px;width:min(360px,90vw)}
+.lvc{display:flex;align-items:center;gap:14px;background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.05));
+  border:1px solid rgba(255,255,255,.22);border-radius:16px;padding:14px 16px;cursor:pointer;text-align:left;transition:.14s}
+.lvc:active{transform:scale(.97)}
+.lvc .ic{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:22px;
+  background:rgba(255,255,255,.14);flex:0 0 auto;color:#ffd54a}
+.lvc b{font-size:15px;display:block}
+.lvc span{font-size:12px;color:#9fc0d4}
+.v2btn{margin-top:14px;padding:11px 30px;font-size:16px;font-weight:bold;color:#06283d;
+  background:linear-gradient(180deg,#ffd54a,#ffb02e);border:none;border-radius:26px;cursor:pointer;
+  box-shadow:0 4px 14px rgba(255,180,40,.35)}
+.v2btn.ghost{background:rgba(255,255,255,.14);color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,.25)}
+.v2btn:active{transform:scale(.95)}
+#v2toast{position:fixed;left:50%;top:20%;transform:translateX(-50%);z-index:30;display:flex;
+  flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.tst{background:rgba(4,30,48,.92);border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:9px 16px;
+  font-size:13px;color:#fff;white-space:nowrap;animation:v2pop .3s ease,v2fade 2.4s forwards;
+  box-shadow:0 10px 26px rgba(0,0,0,.45)}
+.tst.gold{border-color:rgba(255,213,74,.65);color:#ffd54a}
+@keyframes v2pop{from{transform:translateY(10px) scale(.92);opacity:0}}
+@keyframes v2fade{0%,72%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
+#shopBtn{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:12}
+/* ---- 血量移到左下角：避免与右上角设置按钮重叠 ---- */
+#lives{position:fixed;left:12px;bottom:26px;font-size:24px;letter-spacing:2px;z-index:6;
+  text-shadow:0 1px 4px rgba(0,0,0,.6)}
+/* ---- 设置按钮（右上角齿轮，符合主流游戏惯例） ---- */
+#setBtn{position:fixed;top:10px;right:12px;width:38px;height:38px;border-radius:50%;z-index:15;cursor:pointer;
+  display:grid;place-items:center;font-size:20px;color:#fff;
+  background:rgba(4,30,48,.55);border:1px solid rgba(255,255,255,.25);backdrop-filter:blur(8px);
+  box-shadow:0 4px 14px rgba(0,0,0,.3);transition:transform .12s}
+#setBtn:active{transform:scale(.9) rotate(30deg)}
+#setOv .row{margin:14px 0;width:min(420px,88vw);text-align:left}
+#setOv .row .lab{font-size:14px;font-weight:700;color:#eaf7ff;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+#setOv .row .lab b{color:#ffd54a;font-size:14px}
+#setOv .row .hint{font-size:12px;color:#9fc0d4;margin-top:4px;line-height:1.5}
+#setOv input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:99px;
+  background:linear-gradient(90deg,#ffd54a,#ff9d2e);outline:none;margin-top:4px}
+#setOv input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+  background:#fff;border:3px solid #ffd54a;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+#setOv .seg{display:flex;gap:8px;flex-wrap:wrap}
+#setOv .seg button{flex:1;min-width:52px;padding:9px 0;font-size:14px;font-weight:700;color:#cfe8f5;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:12px;cursor:pointer;transition:.13s}
+#setOv .seg button.on{background:linear-gradient(180deg,#ffd54a,#ffb02e);color:#06283d;border-color:transparent}
+#setOv .seg button:active{transform:scale(.94)}
+#setOv .btnrow3{display:flex;gap:8px}
+#setOv .btnrow3 button{flex:1;padding:11px 0;font-size:14px;font-weight:800;border:none;border-radius:12px;cursor:pointer;transition:transform .12s}
+#setOv .btnrow3 #setRestart{background:linear-gradient(180deg,#ffd54a,#ffb02e);color:#3d2a00}
+#setOv .btnrow3 #setResume{background:linear-gradient(180deg,#9fe08c,#5ec444);color:#0c2b06}
+#setOv .btnrow3 #setHome{background:linear-gradient(180deg,#8fc7ff,#4d9be6);color:#04213d}
+#setOv .btnrow3 button:active{transform:scale(.95)}
+/* ---- 开始界面按钮组：难度折叠 + 皮肤商店 + 开始游戏（统一黄色系） ---- */
+#v2menu{display:flex;gap:10px;margin-top:20px;justify-content:center;flex-wrap:wrap;position:relative;z-index:2}
+#v2menu .mbtn{padding:11px 22px;font-size:16px;font-weight:bold;border:none;border-radius:26px;cursor:pointer;
+  box-shadow:0 4px 12px rgba(255,180,40,.3);transition:transform .12s}
+#v2menu .mbtn:active{transform:scale(.95)}
+#normalBtn{background:linear-gradient(180deg,#ffe066,#ffbf2e);color:#5a4200}
+#endlessBtn{background:linear-gradient(180deg,#ffe8a3,#ffc94a);color:#5a4200}
+#skinBtn2{background:linear-gradient(180deg,#fff0a8,#ffd54a);color:#6b4d00}
+#diffPanel .diffTitle{font-size:13px;font-weight:800;color:#ffd54a;letter-spacing:1px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+#diffPanel{display:none;flex-direction:column;gap:8px;margin-top:12px;align-items:center;position:relative;z-index:2}
+#diffPanel.open{display:flex}
+#diffPanel .dbtn{width:min(240px,70vw);padding:10px;font-size:16px;font-weight:bold;border:none;border-radius:22px;cursor:pointer;
+  color:#6b4d00;box-shadow:0 3px 10px rgba(255,180,40,.28);transition:transform .12s}
+#diffPanel .dbtn:active{transform:scale(.96)}
+#diffPanel .dbtn[data-d="easy"]{background:linear-gradient(180deg,#fff6c9,#ffe98a)}
+#diffPanel .dbtn[data-d="hard"]{background:linear-gradient(180deg,#ffd54a,#ffb02e)}
+#diffPanel .dbtn[data-d="hell"]{background:linear-gradient(180deg,#ff9d2e,#ff7a1a);color:#3d2200}
+`;
+const _st = document.createElement('style'); _st.textContent = CSS; document.head.appendChild(_st);
+
+/* ------------------------------------------------------------ 1. 工具函数 */
+const TAU = Math.PI * 2;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const fmt = n => Math.round(n).toLocaleString('en-US');
+
+function toast(msg, gold) {
+  const box = document.getElementById('v2toast');
+  const d = document.createElement('div');
+  d.className = 'tst' + (gold ? ' gold' : '');
+  d.textContent = msg;
+  box.appendChild(d);
+  setTimeout(() => d.remove(), 2500);
+}
+
+/* 扩展音效：复用原版 AudioContext，不干扰原版 beep */
+const SFX_VOL = .55;      // 合成音效统一音量系数（整体压小）
+
+/* ---- 设置：全局音量 + 怪物生成速度乘区（独立于难度） --------------------- */
+const SETKEY = 'sealV2Set';
+let SET = (function () {
+  try { return Object.assign({ vol: 1, spawnMul: 1 }, JSON.parse(localStorage.getItem(SETKEY) || '{}')); }
+  catch (e) { return { vol: 1, spawnMul: 1 }; }
+})();
+const saveSET = () => { try { localStorage.setItem(SETKEY, JSON.stringify(SET)); } catch (e) { } };
+let GAME_VOL = typeof SET.vol === 'number' ? Math.max(0, Math.min(1, SET.vol)) : 1;   // 总音量 0~1
+let SPAWN_MUL = typeof SET.spawnMul === 'number' ? SET.spawnMul : 1;                 // 生成速度倍率
+let TEST_MODE = SET.testMode === true;   // 测试版：所有皮肤免费试用
+
+function sfx(freq, dur, type, vol, slideTo) {
+  try {
+    if (GAME_VOL <= 0) return;
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, actx.currentTime);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), actx.currentTime + dur);
+    g.gain.setValueAtTime((vol || .1) * SFX_VOL * GAME_VOL, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch (e) { }
+}
+
+/* Boss 出场音效：来自抖音「原声」链接（2.7 秒，已内联为 base64） */
+let _bossVoice = null;
+function playBossVoice() {
+  try {
+    if (!_bossVoice) { _bossVoice = new Audio(BOSS_VOICE_SRC); _bossVoice.volume = .7; }
+    _bossVoice.volume = .7 * GAME_VOL;
+    _bossVoice.currentTime = 0;
+    const pr = _bossVoice.play();
+    if (pr && pr.catch) pr.catch(() => { });
+  } catch (e) { }
+}
+
+/* ------------------------------------------------------------ 2. 存档 */
+const SKEY = 'sealV2';
+let S = (function () {
+  try { return Object.assign({ coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 }, JSON.parse(localStorage.getItem(SKEY) || '{}')); }
+  catch (e) { return { coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 }; }
+})();
+const saveS = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch (e) { } };
+
+/* ------------------------------------------------------------ 3. 皮肤 */
+const RARE = { 1: '普通', 2: '稀有', 3: '史诗', 4: '传说' };
+const SKINS = [
+  { id: 'classic', name: '经典海豹',    rare: 4, price: 0,    label: '原版形象',   src: null, hideInShop: true },
+  { id: 'base',    name: '初始模型',    rare: 1, price: 200,  label: '你的原始模样', src: SKIN_SRC.base },
+  { id: 'moyushuang', name: '魔芋爽',   rare: 1, price: 800,  label: '辣味开胃',   src: SKIN_SRC.moyushuang },
+  { id: 'binghongcha', name: '冰红茶',  rare: 2, price: 1200, label: '冰力十足',   src: SKIN_SRC.binghongcha, glow: '#ffd54a' },
+  { id: 'leshi',   name: '乐事薯片',    rare: 2, price: 2000, label: '超值分享',   src: SKIN_SRC.leshi, glow: '#ff6ec7' },
+  { id: 'gaodengshuxue', name: '高等数学', rare: 3, price: 2500, label: '上册 第八版', src: SKIN_SRC.gaodengshuxue, glow: '#6ee7a0' },
+  { id: 'xiandaishuxue', name: '线性代数', rare: 3, price: 3500, label: '第六版 同济', src: SKIN_SRC.xiandaishuxue, glow: '#b388ff' },
+  { id: 'jiahao',  name: '嘉豪',        rare: 3, price: 5000, label: '黑色宽松 T',  src: SKIN_SRC.jiahao, glow: '#9fb4ff' },
+  { id: 'naiyu',   name: '奶鱼',        rare: 4, price: 8000, label: '贝壳上衣+鱼尾', src: SKIN_SRC.naiyu, glow: '#3ddc97', bossReq: 1 },
+  { id: 'xiangjiao', name: '香蕉',      rare: 4, price: 10000, label: '香蕉皮尾巴', src: SKIN_SRC.xiangjiao, glow: '#ffd23f', bossReq: 2 },
+  { id: 'wjh',     name: 'wjh',         rare: 4, price: 15000, label: '终极形态', src: SKIN_SRC.wjh, glow: '#9fb4ff', bossReq: 3 }
+];
+const skinById = id => SKINS.find(s => s.id === id) || SKINS[0];
+
+/* 皮肤贴图 + 原版海豹贴图 的统一度量（用于等比绘制） */
+const _metric = {};
+function metric(img) {
+  if (!img || !img.complete || !img.naturalWidth) return null;
+  const key = img.src.length + ':' + img.src.slice(-48);
+  if (_metric[key]) return _metric[key];
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0);
+  let a = 1e9, b = -1, cc = 1e9, d = -1;
+  try {
+    const px = x.getImageData(0, 0, c.width, c.height).data;
+    for (let y = 0; y < c.height; y++) for (let xx = 0; xx < c.width; xx++) {
+      if (px[(y * c.width + xx) * 4 + 3] > 60) {
+        if (xx < a) a = xx; if (xx > b) b = xx; if (y < cc) cc = y; if (y > d) d = y;
+      }
+    }
+  } catch (e) { }
+  if (b < 0) { a = 0; b = c.width - 1; cc = 0; d = c.height - 1; }
+  const m = { img, w: c.width, h: c.height, bx: a, by: cc, bw: b - a + 1, bh: d - cc + 1 };
+  m.cx = a + m.bw / 2; m.cy = cc + m.bh / 2;
+  m.size = Math.sqrt(m.bw * m.bh);              // 视觉尺度基准
+  _metric[key] = m;
+  return m;
+}
+
+/* 皮肤图片预载 */
+SKINS.forEach(sk => {
+  if (sk.src) { sk.img = new Image(); sk.img.src = sk.src; }
+});
+const CLASSIC_IMG = sealImg;                       // 原版玩家海豹
+
+function equippedImg() {
+  const sk = skinById(S.equipped);
+  if (sk.id === 'classic') return CLASSIC_IMG;
+  return sk.img && sk.img.complete && sk.img.naturalWidth ? sk.img : CLASSIC_IMG;
+}
+
+/* --------------------------------------------- 4. 局内状态（每次开局重置） */
+const UPGRADES = [
+  { id: 'giant',  ic: '◉', name: '巨化',     d: '体型立刻 +12%' },
+  { id: 'swift',  ic: '➤', name: '疾风',     d: '游动速度 +20%' },
+  { id: 'magnet', ic: '◎', name: '吸星',     d: '附近小鱼自动被吸过来' },
+  { id: 'devour', ic: '▲', name: '暴食',     d: '能吃掉更大的奶龙' },
+  { id: 'combo',  ic: '✦', name: '连击大师', d: '吃鱼积分 ×2 / ×3 / ×4' },
+  { id: 'vigor',  ic: '✚', name: '铁壁',     d: '生命立刻回满 + 5 秒无敌' },
+  { id: 'charge', ic: '↻', name: '闪充',     d: '冲刺冷却 −2 秒' },
+  { id: 'harvest', ic: '✳', name: '丰收',    d: '每次吃鱼额外 +1 经验' }
+];
+
+let V = null;   // v2 局内状态
+let GAME_MODE = 'normal';   // 'normal' | 'endless'（普通 / 无尽）
+let CUR_DIFF = 'hard';      // 当前难度键 'easy' | 'hard' | 'hell'（无尽模式积分倍率用）
+function newV() {
+  V = {
+    lvl: 1, exp: 0, expNeed: 10, pendingLv: 0,
+    up: { giant: 0, swift: 0, magnet: 0, devour: 0, combo: 0, charge: 0, harvest: 0 },
+    coinsRun: 0, combo: 0, comboT: 0, maxCombo: 0,
+    dashT: 0, dashCd: 0, dashX: 1, dashY: 0,
+    eatCount: 0,
+    bosses: [], bossIdx: -1, bossDone: 0, trig: [false, false, false],
+    endless: { star: 0, round: 0, roundDone: 0, lastPick: -1, active: false },
+    bullets: [], waves: [], snakes: [], parts: [],
+    prevScore: 0, prevLives: (typeof lives === 'number' ? lives : 3),
+    hurtFlash: 0
+  };
+}
+newV();
+
+/* ------------------------------------------------------------ 5. Boss 配置 */
+const BOSS_SIZE = 112;          // 三个 Boss 体型统一
+const BOSS_DEFS = [
+  { key: 'dj', name: '袋鼠 DJ', sub: '音响三兄弟', orb: '音响', orbIc: '♪', orbC: '#ff4d6d',
+    sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 8, reward: 100, orbCoin: 30,
+    line: '◆ 袋鼠 DJ 登场！吃掉它的 3 个音响！' },
+  { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣包', orbIc: '◆', orbC: '#ff3b30',
+    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 9, reward: 200, orbCoin: 50,
+    line: '◆ 魔芋爽辣王来了！吃掉它的 3 个辣包！' },
+  { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '答案卷', orbIc: '■', orbC: '#4cc9f0',
+    sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 3.1, atk: 'snake', dmg: 10, reward: 300, orbCoin: 80,
+    line: '◆ 高数压轴登场！小心它的函数线！' }
+];
+const _bossImgCache = {};
+function bossImg(def) {
+  const src = def.sprite;
+  if (src === 'BOSS_IMG') return BOSS_IMG;
+  if (!_bossImgCache[def.key]) { const im = new Image(); im.src = src; _bossImgCache[def.key] = im; }
+  return _bossImgCache[def.key];
+}
+
+/* ------------------------------------------------------------ 6. DOM 注入 */
+function el(tag, id, cls, html) {
+  const e = document.createElement(tag);
+  if (id) e.id = id; if (cls) e.className = cls; if (html != null) e.innerHTML = html;
+  return e;
+}
+// HUD 扩展
+const hud2 = el('div', 'v2hud');
+hud2.innerHTML =
+  '<div class="pill">积分 <b id="v2coin">0</b><span id="lvt">Lv.1</span></div>' +
+  '<div class="pill">连击 <b id="v2combo">0</b></div>';
+document.body.appendChild(hud2);
+const bossbar = el('div', 'bossbar');
+bossbar.innerHTML = '<div class="nm"><span id="bbname">Boss</span><span class="tag" id="bbtag">剩 3 / 3</span></div>' +
+  '<div class="bar"><i id="bbfill"></i></div>';
+document.body.appendChild(bossbar);
+const dashbtn = el('div', 'dashbtn', null, '<div style="display:grid;place-items:center"><b>冲刺</b><span>双击屏幕</span></div>');
+document.body.appendChild(dashbtn);
+document.body.appendChild(el('div', 'v2toast'));
+
+// 开始界面加「皮肤商店」按钮
+const shopBtn = el('button', 'shopBtn', 'v2btn ghost', '◉ 皮肤商店');
+shopBtn.style.position = 'fixed'; shopBtn.style.marginTop = '0';
+startScreen.appendChild(shopBtn);
+
+// 商店 overlay
+const shop = el('div', 'shopOv', 'v2ov hidden');
+shop.innerHTML = '<h2>皮肤商店</h2><div class="sub">吃掉奶龙赚积分，解锁新皮肤 · 皮肤只改外观不影响数值</div>' +
+  '<div id="shopGrid"></div>' +
+  '<div style="margin-top:14px;font-size:13px;color:#9fc0d4">当前积分 <b id="shopCoin" style="color:#ffd54a;font-size:17px">0</b></div>' +
+  '<button class="v2btn" id="shopClose">返回</button>';
+document.body.appendChild(shop);
+
+// 进化 overlay
+const lvov = el('div', 'lvOv', 'v2ov hidden');
+lvov.innerHTML = '<h2>进 化</h2><div class="sub">选择一项强化，本局永久生效<br>' +
+  '<b style="color:#ffd54a">◉ 选卡期间无敌 · 选完还有 1.6 秒保护</b></div>' +
+  '<div id="lvCards"></div><div style="margin-top:14px;font-size:12px;color:#9fc0d4" id="lvTip"></div>';
+document.body.appendChild(lvov);
+
+// ---- 设置按钮（右上角齿轮，主流游戏位置） ----
+const setBtn = el('button', 'setBtn', null, '⚙');
+document.body.appendChild(setBtn);
+
+// ---- 设置面板 ----
+const setOv = el('div', 'setOv', 'v2ov hidden');
+setOv.innerHTML =
+  '<h2>设 置</h2><div class="sub">音量与怪物生成速度，改动即时生效并自动保存</div>' +
+  '<div class="row"><div class="lab"><span>🔊 游戏音量</span><b id="volVal">100%</b></div>' +
+  '<input type="range" id="volRange" min="0" max="100" step="5" value="100">' +
+  '<div class="hint">控制所有音效（吃鱼、冲刺、Boss、死亡/胜利音）</div></div>' +
+  '<div class="row"><div class="lab"><span>👾 怪物生成速度</span><b id="spawnVal">1.0×</b></div>' +
+  '<div class="seg" id="spawnSeg">' +
+  '<button data-s="0.5">0.5×</button><button data-s="0.8">0.8×</button><button data-s="1">1.0×</button>' +
+  '<button data-s="1.2">1.2×</button><button data-s="1.5">1.5×</button><button data-s="2">2.0×</button>' +
+  '</div>' +
+  '<div class="hint">独立于难度：最终生成率 = 难度基础值 × 此倍率</div></div>' +
+  '<div class="row"><div class="lab"><span>🧪 版本切换</span></div>' +
+  '<div class="seg" id="verSeg">' +
+  '<button data-v="normal">正式版</button><button data-v="test">测试版</button>' +
+  '</div>' +
+  '<div class="hint">测试版：所有皮肤免费试用（不扣积分、无需击败 Boss），正式版恢复原价</div></div>' +
+  '<div class="row btnrow3">' +
+  '<button id="setRestart">↻ 重新开始</button>' +
+  '<button id="setResume">▶ 继续游戏</button>' +
+  '<button id="setHome">⌂ 回主界面</button></div>';
+document.body.appendChild(setOv);
+
+shopBtn.onclick = () => { renderShop(); shop.classList.remove('hidden'); };
+document.getElementById('shopClose').onclick = () => shop.classList.add('hidden');
+setBtn.onclick = () => setOv.classList.remove('hidden');
+
+/* ---- 设置面板三个功能按钮：重新开始 / 继续游戏 / 回主界面 ---- */
+document.getElementById('setRestart').onclick = () => {
+  setOv.classList.add('hidden');
+  start();
+};
+document.getElementById('setResume').onclick = () => setOv.classList.add('hidden');
+document.getElementById('setHome').onclick = () => {
+  setOv.classList.add('hidden');
+  bossbar.classList.remove('on');
+  overScreen.classList.add('hidden');
+  startScreen.classList.remove('hidden');
+  state = 'menu';
+  reset();
+};
+
+/* ---- 设置面板交互：音量 + 生成速度 ---------------------------------------- */
+(function initSettings() {
+  const volRange = document.getElementById('volRange');
+  const volVal = document.getElementById('volVal');
+  const spawnVal = document.getElementById('spawnVal');
+  const spawnSeg = document.getElementById('spawnSeg');
+  const verSeg = document.getElementById('verSeg');
+
+  // 版本切换（正式版 / 测试版）
+  function refreshVerSeg() {
+    verSeg.querySelectorAll('button').forEach(b =>
+      b.classList.toggle('on', (b.dataset.v === 'test') === TEST_MODE));
+  }
+  refreshVerSeg();
+  verSeg.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      TEST_MODE = b.dataset.v === 'test';
+      SET.testMode = TEST_MODE; saveSET();
+      // 切回正式版：若当前装备的是测试版试用的皮肤，回退到已拥有的
+      if (!TEST_MODE && !S.owned.includes(S.equipped)) {
+        S.equipped = S.owned[0] || 'classic'; saveS();
+      }
+      refreshVerSeg();
+      toast(TEST_MODE ? '🧪 已切换到测试版：皮肤免费试用' : '已切换到正式版', TEST_MODE);
+      renderShop();
+      sfx(TEST_MODE ? 760 : 480, .08, 'triangle', .07);
+    });
+  });
+
+  // 初始化：回显已保存的值
+  volRange.value = Math.round(GAME_VOL * 100);
+  volVal.textContent = Math.round(GAME_VOL * 100) + '%';
+  spawnVal.textContent = (SPAWN_MUL % 1 === 0 ? SPAWN_MUL + '.0' : SPAWN_MUL) + '×';
+  spawnSeg.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', +b.dataset.s === SPAWN_MUL);
+  });
+
+  // 音量滑块
+  volRange.addEventListener('input', () => {
+    GAME_VOL = +volRange.value / 100;
+    SET.vol = GAME_VOL;
+    saveSET();
+    volVal.textContent = volRange.value + '%';
+  });
+
+  // 生成速度倍率
+  spawnSeg.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      SPAWN_MUL = +b.dataset.s;
+      SET.spawnMul = SPAWN_MUL;
+      saveSET();
+      spawnSeg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      spawnVal.textContent = (SPAWN_MUL % 1 === 0 ? SPAWN_MUL + '.0' : SPAWN_MUL) + '×';
+    });
+  });
+})();
+
+/* ---- 开始界面重排 V0.4：三个主按钮（普通游戏 / 无尽模式 / 皮肤商店） ---------
+   点「普通游戏」或「无尽模式」先弹出难度选择，选中难度后立即开局；
+   两种模式共用一套难度，但积分倍率不同（普通 1/1.5/2，无尽 2/2.5/3）。 */
+(function buildMenu() {
+  const diffRow = document.getElementById('diffRow');
+  if (diffRow) {
+    const lab = diffRow.previousElementSibling;       // 「选择难度」那行小字
+    if (lab && lab.tagName === 'P') lab.style.display = 'none';
+    diffRow.style.display = 'none';
+  }
+  const menu = el('div', 'v2menu');
+  const normalBtn = el('button', 'normalBtn', 'mbtn', '▶ 普通游戏');
+  const endlessBtn = el('button', 'endlessBtn', 'mbtn', '∞ 无尽模式');
+  const skinBtn2 = el('button', 'skinBtn2', 'mbtn', '◉ 皮肤商店');
+  menu.appendChild(normalBtn); menu.appendChild(endlessBtn); menu.appendChild(skinBtn2);
+  const panel = el('div', 'diffPanel');
+  const panelTitle = el('div', 'diffTitle', null, '选择难度');
+  panel.appendChild(panelTitle);
+  panel.innerHTML += '<button class="dbtn" data-d="easy">简单</button>' +
+    '<button class="dbtn" data-d="hard">困难</button>' +
+    '<button class="dbtn" data-d="hell">地狱</button>';
+  startScreen.appendChild(menu);
+  startScreen.appendChild(panel);
+  let pendingMode = 'normal';   // 当前展开难度面板的模式
+
+  // 原来的皮肤商店按钮移进按钮组（复用同一套商店逻辑）
+  shopBtn.style.position = 'static'; shopBtn.style.marginTop = '0';
+  shopBtn.style.display = 'none';
+
+  normalBtn.onclick = () => {
+    pendingMode = 'normal';
+    panelTitle.textContent = '普通游戏 · 选择难度';
+    panel.classList.toggle('open');
+    sfx(520, .06, 'triangle', .06);
+  };
+  endlessBtn.onclick = () => {
+    pendingMode = 'endless';
+    panelTitle.textContent = '无尽模式 · 选择难度（积分 ×2.0~×3.0）';
+    panel.classList.toggle('open');
+    sfx(760, .06, 'triangle', .06);
+  };
+  panel.querySelectorAll('.dbtn').forEach(b => {
+    b.addEventListener('click', () => {
+      cfg = DIFFS[b.dataset.d];
+      CUR_DIFF = b.dataset.d;
+      GAME_MODE = pendingMode;                         // 由哪个主按钮打开就进哪个模式
+      panel.classList.remove('open');
+      sfx(660, .08, 'triangle', .07);
+      start();
+    });
+  });
+  skinBtn2.onclick = () => { renderShop(); shop.classList.remove('hidden'); };
+  // 点击面板外收起难度面板
+  startScreen.addEventListener('click', e => {
+    if (!panel.contains(e.target) && e.target !== normalBtn && e.target !== endlessBtn) panel.classList.remove('open');
+  });
+})();
+
+/* ---- 面板滚动支持 ---------------------------------------------------------
+   原版给 html,body 设了 touch-action:none + overflow:hidden，并且在 window 上
+   挂了 touchmove 的 preventDefault（用来控制海豹）。这两条叠加会让面板完全滑不动。
+   这里只做两件事，不碰原版一行代码：
+   ① 面板打开时给 <html> 加 v2scroll，放开 touch-action；
+   ② 在面板上截住 touchmove，不让它冒泡到 window 触发 preventDefault。 */
+[shop, lvov, setOv].forEach(ov => {
+  ov.addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+  new MutationObserver(() => {
+    const anyOpen = !shop.classList.contains('hidden') || !lvov.classList.contains('hidden') || !setOv.classList.contains('hidden');
+    document.documentElement.classList.toggle('v2scroll', anyOpen);
+  }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+});
+
+function renderShop() {
+  document.getElementById('shopCoin').textContent = fmt(S.coins);
+  const g = document.getElementById('shopGrid');
+  g.innerHTML = SKINS.filter(sk => !sk.hideInShop).map(sk => {
+    const have = S.owned.includes(sk.id);
+    const on = S.equipped === sk.id;
+    const bossMet = !sk.bossReq || (S.bossKilled || 0) >= sk.bossReq;
+    const testFree = TEST_MODE && !have;                 // 测试版：未拥有的皮肤免费试用
+    let price;
+    if (have) price = `<div class="p own">✓ ${on ? '使用中' : '点击装备'}</div>`;
+    else if (testFree) price = `<div class="p own">🧪 测试版 · 免费试用</div>`;
+    else if (sk.price === 0) price = `<div class="p own">免费</div>`;
+    else if (sk.bossReq) price = `<div class="p">◇ ${fmt(sk.price)}${bossMet ? '' : ` · 需击败 ${sk.bossReq} Boss`}</div>`;
+    else price = `<div class="p">◇ ${fmt(sk.price)}</div>`;
+    const focus = (S.equipped === 'classic' && sk.id === 'classic') ? CLASSIC_IMG : sk.img;
+    const thumb = sk.id === 'classic'
+      ? `<img src="${CLASSIC_IMG.src}" alt="">`
+      : (sk.src ? `<img src="${sk.src}" alt="">` : '');
+    return `<div class="skcard ${on ? 'on' : ''} ${(!have && !testFree && sk.bossReq && !bossMet) ? 'locked' : ''}" data-sk="${sk.id}">
+      ${on ? '<div class="rib">使用中</div>' : `<div class="rr">${RARE[sk.rare]}</div>`}
+      ${thumb}<div class="n">${sk.name}</div><div class="l">${sk.label}</div>${price}</div>`;
+  }).join('');
+  g.querySelectorAll('[data-sk]').forEach(c => {
+    c.onclick = () => clickSkin(c.dataset.sk);
+  });
+}
+function clickSkin(id) {
+  const sk = skinById(id);
+  if (S.owned.includes(id)) { S.equipped = id; saveS(); sfx(660, .1, 'triangle', .08); toast('已装备：' + sk.name, true); renderShop(); return; }
+  if (TEST_MODE) {   // 测试版：免费直接装备（不写入正式版存档的已购列表）
+    S.equipped = id; saveS(); sfx(880, .12, 'triangle', .1);
+    toast('🧪 测试版已装备：' + sk.name, true); renderShop(); return;
+  }
+  if (sk.bossReq && (S.bossKilled || 0) < sk.bossReq) { toast('需击败 ' + sk.bossReq + ' 个 Boss 才能解锁'); return; }
+  if (S.coins < sk.price) { toast('积分不足，还差 ' + fmt(sk.price - S.coins)); return; }
+  S.coins -= sk.price; S.owned.push(id); S.equipped = id; saveS();
+  sfx(880, .12, 'triangle', .1); toast('★ 解锁并装备：' + sk.name, true); renderShop();
+  updateShopCoin();
+}
+
+/* ------------------------------------------------------------ 7. 冲刺 */
+const DASH_INVULN = 3000;      // 冲刺无敌时长（3 秒）
+let lastTap = 0;
+function tryDash() {
+  if (state !== 'playing' || !V) return;
+  if (V.dashCd > 0) return;
+  let dx = 0, dy = 0;
+  if (pointer) { dx = pointer.x - player.x; dy = pointer.y - player.y; }
+  const m = Math.hypot(dx, dy);
+  if (m > 12) { dx /= m; dy /= m; } else { dx = player.dir > 0 ? 1 : -1; dy = 0; }
+  V.dashX = dx; V.dashY = dy; V.dashT = 0.24;
+  V.dashCd = Math.max(4, 10 - V.up.charge * 2);
+  invincibleUntil = performance.now() + DASH_INVULN;
+  sfx(300, .18, 'triangle', .1, 900);
+  for (let i = 0; i < 16; i++) {
+    V.parts.push({ x: player.x, y: player.y, vx: rnd(-160, 160) - dx * 200, vy: rnd(-160, 160) - dy * 200,
+      r: rnd(3, 8), life: rnd(.25, .5), c: '#8fd6ff' });
+  }
+}
+dashbtn.onclick = tryDash;
+/* 移动端浏览器会在 touchstart 后补发合成的 mousedown，
+   一次点按被计成两次「tap」，导致单击就触发冲刺。
+   这里记录最近一次触摸时间，忽略其后 600ms 内的合成鼠标事件。 */
+let lastTouchTap = 0;
+function tapDash(e) {
+  const n = performance.now();
+  if (e.type === 'touchstart') lastTouchTap = n;
+  else if (n - lastTouchTap < 600) return; // 触摸合成的 mousedown，跳过
+  if (n - lastTap < 280) tryDash();
+  lastTap = n;
+}
+addEventListener('touchstart', tapDash, { passive: true });
+addEventListener('mousedown', tapDash);
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === ' ' || k === 'shift') { e.preventDefault(); tryDash(); }
+  if (state === 'levelup' && ['1', '2', '3'].includes(k)) {
+    const c = document.querySelectorAll('#lvCards .lvc'); const i = +k - 1;
+    if (c[i]) c[i].click();
+  }
+});
+
+/* ------------------------------------------------------------ 8. 进化 */
+/* 升级无敌：选卡期间拉满无敌（世界本来就暂停，双保险），选完再给一段缓冲 */
+const LV_INVULN_HOLD = 1e9;    // 选卡期间（等价于无限）
+const LV_INVULN_AFTER = 1600;  // 选完回到游戏后的无敌缓冲（毫秒）
+let lvInvulnBackup = 0;
+
+function gainExp(n) {
+  if (!V || V.lvl >= 9) return;
+  V.exp += n;
+  while (V.lvl < 9 && V.exp >= V.expNeed) {
+    V.exp -= V.expNeed; V.lvl++;
+    V.expNeed = Math.round(V.expNeed * 1.3) + 3;
+    V.pendingLv++;
+  }
+  if (V.lvl >= 9) V.exp = 0;
+  if (V.pendingLv > 0) openLv();
+}
+function openLv() {
+  if (state !== 'playing') return;
+  state = 'levelup';
+  /* 升级期间无敌：弹窗时世界虽然已暂停，但「弹出瞬间」和「选完恢复的那一帧」
+     玩家很可能正贴着大鱼/Boss，这里直接把无敌时间拉满，彻底断掉这种秒死。 */
+  lvInvulnBackup = invincibleUntil;
+  invincibleUntil = performance.now() + LV_INVULN_HOLD;
+  renderLv();
+  lvov.classList.remove('hidden');
+}
+function renderLv() {
+  const pool = UPGRADES.slice(), picks = [];
+  while (picks.length < 3 && pool.length) picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  document.getElementById('lvCards').innerHTML = picks.map(u =>
+    `<div class="lvc" data-u="${u.id}"><div class="ic">${u.ic}</div><div><b>${u.name}</b><span>${u.d}</span></div></div>`).join('');
+  document.getElementById('lvTip').textContent = `等级 Lv.${V.lvl} · 还能进化 ${9 - V.lvl} 次（键盘 1/2/3 也可选择）`;
+  document.querySelectorAll('#lvCards .lvc').forEach(e => { e.onclick = () => pickLv(e.dataset.u); });
+}
+function pickLv(id) {
+  V.pendingLv--;
+  if (V.pendingLv > 0) {                 // 还有升级待选：保持弹窗 + 保持无敌
+    try { applyLv(id); } catch (e) { }
+    renderLv();
+    invincibleUntil = performance.now() + LV_INVULN_HOLD;
+    return;
+  }
+  /* 先恢复好状态再应用强化 —— 即使某个强化出错，也不会卡在弹窗里 */
+  lvov.classList.add('hidden');
+  state = 'playing';
+  lastV2 = performance.now();
+  // 修复：选卡是用手/鼠标点的，pointer 停在卡片上——恢复后海豹会自动游过去。把目标拉回海豹自身
+  if (player) { pointer.x = player.x; pointer.y = player.y; }
+  const base = performance.now() + LV_INVULN_AFTER;
+  invincibleUntil = base;
+  try { applyLv(id); } catch (e) { }
+  invincibleUntil = Math.max(invincibleUntil, base);  // 保留「铁壁」等给的更长无敌
+}
+function applyLv(id) {
+  const u = V.up;
+  if (id === 'giant')  { u.giant++;  player.r = Math.min(cfg.winSize * 1.05, player.r * 1.12); }
+  if (id === 'swift')  { u.swift++; }
+  if (id === 'magnet') { u.magnet++; }
+  if (id === 'devour') { u.devour++; }
+  if (id === 'combo')  { u.combo++; }
+  /* 注意：不能把 lives 撑到 MAX_LIVES 以上 ——
+     原版 updateHud 用 '🖤'.repeat(MAX_LIVES - lives)，负数会抛 RangeError。
+     所以改成「回满 + 无敌」，满命时也有收益。 */
+  if (id === 'vigor')  {
+    lives = MAX_LIVES;
+    invincibleUntil = Math.max(invincibleUntil, performance.now() + 5000);
+    updateHud();
+  }
+  if (id === 'charge') { u.charge++; }
+  if (id === 'harvest') { u.harvest++; }
+  const d = UPGRADES.find(x => x.id === id);
+  sfx(880, .12, 'triangle', .1);
+  toast('✦ 进化：' + d.name + '　' + d.d, true);
+}
+
+/* ------------------------------------------------------------ 9. Boss 逻辑 */
+function spawnBoss(i) {
+  const def = BOSS_DEFS[i];
+  V.bossIdx = i;
+  const fromLeft = Math.random() < .5;
+  const boss = {
+    def, t: 0, ph: 1, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: rnd(H * .3, H * .7),
+    r: def.r, atk: 2, hitT: 0,
+    orbs: [0, 1, 2].map(k => ({ alive: true, state: 'guarded', cyc: 2.6 + k * 1.3, r: 19,
+      ang: k * TAU / 3, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+  };
+  V.bosses.push(boss);
+  bossbar.classList.add('on');
+  document.getElementById('bbname').textContent = def.name + ' · ' + def.sub;
+  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
+  document.getElementById('bbfill').style.width = '100%';
+  toast(def.line, true);
+  playBossVoice();   /* Boss 出场音效 */
+}
+
+function updateBoss(dt) {
+  if (!V.bosses.length) return;
+  for (const B of V.bosses) updateBossOne(B, dt);
+  // 弹幕（全局，与单个 Boss 无关，但原逻辑放在 updateBoss 里，这里独立处理一次）
+  updateBullets(dt);
+}
+function updateBossOne(B, dt) {
+  const D = B.def;
+  B.t += dt; if (B.hitT > 0) B.hitT -= dt;
+
+  // 缓慢追踪玩家
+  const tx = player.x + (player.dir > 0 ? -1 : 1) * 60, ty = player.y;
+  const dx = tx - B.x, dy = ty - B.y, d = Math.hypot(dx, dy) || 1;
+  const sp = D.speed + B.ph * 12;
+  B.x += dx / d * sp * dt; B.y += dy / d * sp * dt;
+  B.x = clamp(B.x, -B.r * .4, W + B.r * .4);
+  B.y = clamp(B.y, B.r * .5, H - B.r * .5);
+
+  // 核心物环绕
+  B.orbs.forEach((o, k) => {
+    if (!o.alive) return;
+    o.ang += dt * (0.8 + B.ph * 0.12);
+    const base = B.r * 0.95 + 30;
+    const gx = B.x + Math.cos(o.ang + k * TAU / 3) * base;
+    const gy = B.y + Math.sin(o.ang + k * TAU / 3) * base;
+    let ox = gx, oy = gy;
+    if (o.state === 'open') {
+      ox = B.x + Math.cos(o.ang + k * TAU / 3) * (base + 34);
+      oy = B.y + Math.sin(o.ang + k * TAU / 3) * (base + 26);
+    }
+    o.x += (ox - o.x) * Math.min(1, dt * 4);
+    o.y += (oy - o.y) * Math.min(1, dt * 4);
+    o.cyc -= dt;
+    if (o.cyc <= 0) {
+      if (o.state === 'guarded') { o.state = 'open'; o.cyc = 2.2; sfx(320, .25, 'sawtooth', .09, 90);
+        toast('◆ ' + D.orb + '弹出！快去吃！', true); }
+      else { o.state = 'guarded'; o.cyc = Math.max(2.4, 4.6 - B.ph * .5); }
+    }
+    const dd = Math.hypot(player.x - o.x, player.y - o.y);
+    if (dd < player.r * .7 + o.r * .85) {
+      if (o.state === 'open') eatOrb(o, B);
+      else hitPlayer(D.orbDmg || D.dmg, true);
+    }
+  });
+
+  // 攻击
+  B.atk -= dt;
+  if (B.atk <= 0) {
+    B.atk = D.atkCd - Math.min(1, B.ph * .3);   // 相位最多压缩 1 秒，保证基础间隔（DJ 为 5s）
+    if (D.atk === 'ring') {
+      const n = 1 + B.ph;
+      for (let i = 0; i < n; i++) setTimeout(() => {
+        if (V && V.bosses.includes(B)) V.waves.push({ x: B.x, y: B.y, r: B.r * .5, sp: 300, dmg: 6 + B.ph * 2, a: 1, hit: false });
+      }, i * 170);
+    } else if (D.atk === 'spread') {
+      const n = 9 + B.ph * 3, off = rnd(0, TAU);
+      for (let i = 0; i < n; i++) {
+        const a = off + i / n * TAU;
+        V.bullets.push({ x: B.x, y: B.y, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210,
+          r: 9, sp: 210, dmg: D.dmg, life: 5, homing: false, c: '#ff7a3d' });
+      }
+    } else {
+      /* 高数压轴：蛇形函数线 —— 整体朝玩家冲出去，路径按正弦摆动，一路前进到出界 */
+      const baseAng = Math.atan2(player.y - B.y, player.x - B.x);
+      const cnt = B.ph >= 3 ? 2 : 1;
+      for (let i = 0; i < cnt; i++) {
+        V.snakes.push({
+          pts: [{ x: B.x, y: B.y }],
+          ang0: baseAng + (i - (cnt - 1) / 2) * 0.55,
+          t: 0, speed: 230 + B.ph * 36, amp: 0.62, freq: 4.6,
+          w: 8, dmg: D.dmg, maxLen: 560, life: 7, cool: 0
+        });
+      }
+      sfx(170, .4, 'sawtooth', .09, 60);
+    }
+    beep('death');
+  }
+
+  // 撞本体
+  const bd = Math.hypot(player.x - B.x, player.y - B.y);
+  if (bd < B.r * .55 + player.r * .7) {
+    const k = 260 / (bd || 1);
+    pointer.x = clamp(pointer.x + (player.x - B.x) / bd * 60, 0, W);
+    pointer.y = clamp(pointer.y + (player.y - B.y) / bd * 60, 0, H);
+    hitPlayer(6, true);
+  }
+}
+
+function updateBullets(dt) {
+  // 弹幕
+  for (let i = V.bullets.length - 1; i >= 0; i--) {
+    const b = V.bullets[i];
+    b.life -= dt;
+    if (b.life <= 0) { V.bullets.splice(i, 1); continue; }
+    if (b.homing) {
+      const ax = player.x - b.x, ay = player.y - b.y, ad = Math.hypot(ax, ay) || 1;
+      b.vx += (ax / ad * b.sp - b.vx) * Math.min(1, dt * 1.5);
+      b.vy += (ay / ad * b.sp - b.vy) * Math.min(1, dt * 1.5);
+    }
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.x < -60 || b.x > W + 60 || b.y < -60 || b.y > H + 60) { V.bullets.splice(i, 1); continue; }
+    if (Math.hypot(b.x - player.x, b.y - player.y) < player.r * .68 + b.r * .8) {
+      hitPlayer(b.dmg, true);
+      for (let q = 0; q < 10; q++) V.parts.push({ x: b.x, y: b.y, vx: rnd(-140, 140), vy: rnd(-140, 140), r: rnd(2, 6), life: .4, c: b.c });
+      V.bullets.splice(i, 1);
+    }
+  }
+  // 音浪
+  for (let i = V.waves.length - 1; i >= 0; i--) {
+    const w = V.waves[i];
+    w.r += w.sp * dt; w.a -= dt * .85;
+    if (w.a <= 0) { V.waves.splice(i, 1); continue; }
+    const wd = Math.hypot(player.x - w.x, player.y - w.y);
+    if (!w.hit && Math.abs(wd - w.r) < player.r * .68 + 8) { w.hit = true; hitPlayer(w.dmg, true); }
+  }
+  // 蛇形函数线（高数压轴）：一路往前冲，撞到就掉血
+  for (let i = V.snakes.length - 1; i >= 0; i--) {
+    const s = V.snakes[i];
+    s.t += dt; s.life -= dt;
+    const head = s.pts[s.pts.length - 1];
+    const ang = s.ang0 + Math.sin(s.t * s.freq) * s.amp;      // 朝玩家 + 正弦蛇行
+    const nx = head.x + Math.cos(ang) * s.speed * dt;
+    const ny = head.y + Math.sin(ang) * s.speed * dt;
+    s.pts.push({ x: nx, y: ny });
+    // 限长：超过就掐尾（头进尾出，像一条蛇）
+    let len = 0;
+    for (let k = s.pts.length - 1; k > 0; k--) {
+      len += Math.hypot(s.pts[k].x - s.pts[k - 1].x, s.pts[k].y - s.pts[k - 1].y);
+      if (len > s.maxLen) { s.pts.splice(0, k - 1); break; }
+    }
+    s.cool -= dt;
+    if (s.cool <= 0) {                                        // 抽点检测，避免全量遍历
+      const rr = player.r * .68 + s.w * .8;
+      for (let k = 0; k < s.pts.length; k += 2) {
+        const p = s.pts[k];
+        if (Math.hypot(p.x - player.x, p.y - player.y) < rr) {
+          s.cool = 1.0; hitPlayer(s.dmg, true);
+          for (let q = 0; q < 8; q++) V.parts.push({ x: p.x, y: p.y, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 5), life: .4, c: '#bfe6ff' });
+          break;
+        }
+      }
+    }
+    if (s.life <= 0 || nx < -80 || nx > W + 80 || ny < -80 || ny > H + 80) V.snakes.splice(i, 1);
+  }
+}
+
+function eatOrb(o, B) {
+  const D = B.def;
+  o.alive = false;
+  B.ph = Math.min(3, B.ph + 1);
+  const gain = Math.round(D.orbCoin * coinMul());
+  V.coinsRun += gain;
+  player.r = Math.min(cfg.winSize * 1.05, player.r * 1.06);
+  V.orbsEaten = (V.orbsEaten || 0) + 1;
+  score += Math.round(D.orbCoin / 3);          // 分数/成长仍用原始值，不受积分倍率影响
+  updateHud();
+  toast('◆ 吃掉' + D.orb + '！积分 +' + gain, true);
+  sfx(240, .3, 'sawtooth', .1, 90);
+  for (let q = 0; q < 26; q++) V.parts.push({ x: o.x, y: o.y, vx: rnd(-260, 260), vy: rnd(-260, 260), r: rnd(3, 9), life: rnd(.4, .8), c: '#ffd54a' });
+  if (B.orbs.every(x => !x.alive)) defeatBoss(B);
+}
+
+function defeatBoss(B) {
+  const D = B.def;
+  V.coinsRun += Math.round(D.reward * coinMul());
+  V.bossDone++;
+  // 从在场列表中移除该 Boss
+  const bi = V.bosses.indexOf(B);
+  if (bi >= 0) V.bosses.splice(bi, 1);
+  score += Math.round(D.reward / 2); updateHud();
+  toast('★ ' + D.name + ' 被击败！积分 +' + Math.round(D.reward * coinMul()), true);
+  beep('win');
+  // 累计击败 Boss 数持久化（皮肤解锁条件跨局保留）
+  if (V.bossDone > (S.bossKilled || 0)) { S.bossKilled = V.bossDone; saveS(); }
+
+  if (V.bosses.length === 0) {
+    V.bullets.length = 0; V.waves.length = 0; V.snakes.length = 0;
+    bossbar.classList.remove('on');
+    // 这一波清空了，推进模式
+    if (GAME_MODE === 'endless') {
+      // 关键修复：只有打完普通 3 个 Boss 才进入无尽星数循环——
+      // 3 个 Boss 是按体型先后刷的，中间有 9 秒空档（bosses 为空但流程没走完），
+      // 之前在这个空档就误触发了 advanceEndless，表现为「打 1 个就进无尽一星」。
+      if (V.endless.active) advanceEndless();
+      else if (V.bossDone >= BOSS_DEFS.length) advanceEndless();
+      else V.nextBossAt = performance.now() + 9000;
+    }
+    else {
+      // 普通模式：打完 3 个 Boss 通关
+      if (V.bossDone >= BOSS_DEFS.length) {
+        V.allBossDown = true;
+        setTimeout(() => {
+          if (V && V.allBossDown && state === 'playing') endGame(true);
+        }, 1600);
+      } else {
+        V.nextBossAt = performance.now() + 9000;
+      }
+    }
+  } else {
+    // 还有 Boss 在场：更新 bossbar 计数
+    document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
+  }
+}
+
+/* ---- 无尽模式推进 ---------------------------------------------------------- */
+function endlessSpec(star) {
+  if (star <= 1) return { rounds: 1, perRound: 1 };
+  if (star === 2) return { rounds: 3, perRound: 2 };
+  return { rounds: 1, perRound: 3 };
+}
+function endlessStarsText(star) {
+  const map = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九' };
+  return map[star] || ('' + star);
+}
+function pickBossIdx() {
+  // 随机抽一个 Boss 索引，避开上一波用过的（相邻波不重复）
+  const used = V.endless.lastPicks || [];
+  const pool = [0, 1, 2].filter(i => !used.includes(i));
+  const src = pool.length ? pool : [0, 1, 2];
+  return src[Math.floor(Math.random() * src.length)];
+}
+function spawnEndlessWave() {
+  const spec = endlessSpec(V.endless.star);
+  const picks = [];
+  while (picks.length < spec.perRound) {
+    let idx = pickBossIdx();
+    if (picks.includes(idx)) idx = [0, 1, 2].find(i => !picks.includes(i));
+    picks.push(idx);
+  }
+  V.endless.lastPicks = picks.slice();
+  picks.forEach(idx => spawnBoss(idx));
+}
+function showEndlessStar() {
+  // 显示「无尽奶龙」+「无尽第N颗星」提示
+  const n = endlessStarsText(V.endless.star);
+  showEndlessTitle('无尽奶龙', n);
+}
+function saveEndlessBest() {
+  // 历史最高无尽星数（跨局持久化，存在皮肤存档 sealV2 里）
+  if (V.endless.star > (S.endlessBest || 0)) { S.endlessBest = V.endless.star; saveS(); }
+}
+function advanceEndless() {
+  const E = V.endless;
+  if (!E.active) {
+    // 刚打完普通 3 个 Boss，进入无尽
+    E.active = true; E.star = 1; E.round = 1; E.roundDone = 0; E.lastPicks = [];
+    saveEndlessBest();
+    showEndlessStar();
+    setTimeout(() => { if (V && state === 'playing' && !V.bosses.length) spawnEndlessWave(); }, 1400);
+    return;
+  }
+  E.roundDone++;
+  const spec = endlessSpec(E.star);
+  if (E.roundDone < spec.rounds) {
+    // 同一颗星还有下一轮
+    E.round++;
+    setTimeout(() => { if (V && state === 'playing' && !V.bosses.length) spawnEndlessWave(); }, 1400);
+  } else {
+    // 这颗星完成，进入下一颗星
+    E.star++; E.round = 1; E.roundDone = 0;
+    saveEndlessBest();
+    showEndlessStar();
+    setTimeout(() => { if (V && state === 'playing' && !V.bosses.length) spawnEndlessWave(); }, 1600);
+  }
+}
+function showEndlessTitle(mainText, starText) {
+  // 屏幕中央大标题：无尽奶龙（黄）+ 下面无尽第N颗星（红）
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;' +
+    'text-align:center;pointer-events:none;';
+  d.innerHTML = '<div style="font-size:42px;font-weight:900;color:#ffd54a;text-shadow:0 0 18px rgba(255,213,74,.9),0 4px 12px rgba(0,0,0,.7);letter-spacing:2px">' + mainText + '</div>' +
+    '<div style="font-size:26px;font-weight:800;color:#ff4d5e;text-shadow:0 0 14px rgba(255,60,80,.9),0 3px 10px rgba(0,0,0,.7);margin-top:10px;letter-spacing:3px">无尽第' + starText + '颗星</div>';
+  document.body.appendChild(d);
+  setTimeout(() => {
+    d.style.transition = 'opacity .6s'; d.style.opacity = '0';
+    setTimeout(() => d.remove(), 650);
+  }, 2000);
+}
+
+function hitPlayer(dmg, fromBoss) {
+  const now = performance.now();
+  if (now < invincibleUntil) return;
+  lives--; updateHud();
+  beep('death');
+  V.combo = 0;
+  V.hurtFlash = 1;                 // 触发全屏扣血闪红特效
+  if (lives <= 0) return endGame(false);
+  player.r = Math.max(START_SIZE, player.r * (fromBoss ? 0.9 : 0.95));
+  invincibleUntil = now + 1800;
+}
+
+/* ------------------------------------------------------------ 10. 钩子 */
+/* 兜底：原版 updateHud 里 '🖤'.repeat(MAX_LIVES - lives) 在 lives 越界时会抛
+   RangeError（会把整个结算/升级流程打断，表现为卡在升级界面）。
+   这里统一把 lives 夹在合法区间，零侵入原版。 */
+const _updateHud = updateHud;
+updateHud = function () {
+  if (lives > MAX_LIVES) lives = MAX_LIVES;
+  if (lives < 0) lives = 0;
+  const r = _updateHud.apply(this, arguments);
+  // 难度标签：无尽模式在难度旁加鲜红「无尽」+ 当前星数 + 历史最高星数
+  try {
+    const tag = document.getElementById('diffTag');
+    if (tag && GAME_MODE === 'endless') {
+      const st = (V && V.endless && V.endless.star) || 0;
+      const best = (S && S.endlessBest) || 0;
+      tag.innerHTML = '· ' + cfg.name +
+        ' <span style="color:#ff2d43;font-weight:900;text-shadow:0 0 6px rgba(255,45,67,.8)">· 无尽</span>' +
+        (st > 0 ? ' <span style="color:#ff8a9a">★' + st + '</span>' : '') +
+        (best > 0 ? ' <span style="color:#9fc0d4;font-size:11px">最高★' + best + '</span>' : '');
+    }
+  } catch (e) { }
+  return r;
+};
+
+/* 原版吃鱼音效音量偏大（原值 0.9），这里调小，让 Boss 出场音更突出；并叠加全局音量 */
+const EAT_VOLUME = .22;
+const _playEat = playEat;
+playEat = function () {
+  if (GAME_VOL <= 0) return;               // 静音时不播
+  _playEat.apply(this, arguments);
+  const a = eatVoices[eatVoices.length - 1];
+  if (a) a.volume = EAT_VOLUME * GAME_VOL;
+};
+
+/* 原版 beep（死亡 / 胜利）音量偏大，这里换成低音量版本（逻辑与原版一致，只压小音量），并叠加全局音量 */
+beep = function (type) {
+  try {
+    if (GAME_VOL <= 0) return;
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.connect(g); g.connect(actx.destination);
+    const now = actx.currentTime;
+    if (type === 'death') {
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(220, now);
+      o.frequency.exponentialRampToValueAtTime(55, now + 0.35);
+      g.gain.setValueAtTime(0.13 * GAME_VOL, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+      o.start(now); o.stop(now + 0.42);
+    } else {
+      o.type = 'sine';
+      o.frequency.setValueAtTime(520, now);
+      o.frequency.setValueAtTime(660, now + 0.12);
+      o.frequency.setValueAtTime(880, now + 0.26);
+      g.gain.setValueAtTime(0.13 * GAME_VOL, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+      o.start(now); o.stop(now + 0.65);
+    }
+  } catch (e) { }
+};
+
+/* ---- 地图放大：世界比屏幕大，镜头跟着玩家走 ---------------------------------
+   做法：W/H 改指「世界尺寸」，画布像素仍是屏幕大小；绘制鱼/玩家/子弹时统一
+   平移 -cam，背景则固定在屏幕上铺满；指针坐标按屏幕→世界换算。
+   手机屏幕小，同样 1.45 倍会显得地图很局促 —— 小屏自动加大到 2.4 倍，
+   体感与电脑端的 1.45 倍接近；电脑端保持不变。 */
+function worldScale() {
+  return (Math.min(innerWidth, innerHeight) < 500 || innerWidth < 700) ? 3.0 : 1.45;
+}
+const cam = { x: 0, y: 0 };
+function updateCam() {
+  const vw = innerWidth, vh = innerHeight;
+  cam.x = clamp(player ? player.x - vw / 2 : 0, 0, Math.max(0, W - vw));
+  cam.y = clamp(player ? player.y - vh / 2 : 0, 0, Math.max(0, H - vh));
+}
+const _resize = resize;
+resize = function () {
+  _resize.apply(this, arguments);
+  const s = worldScale();
+  W = Math.round(innerWidth * s);     // 世界尺寸（比屏幕大）
+  H = Math.round(innerHeight * s);
+};
+resize();
+/* 修复「地图有时变回旧大小」：原版在挂钩之前就注册了 addEventListener('resize', resize)，
+   那个监听器持有的是未挂钩的旧函数——旋转屏幕/改窗口时只会重置画布，不会重算世界尺寸。
+   这里补挂自己的监听器（此时全局 resize 已是挂钩版，会重算 W/H）。 */
+addEventListener('resize', () => resize());
+addEventListener('orientationchange', () => setTimeout(resize, 150));
+
+/* 难度参数微调（⚠ 必须改 DIFFS 本身 —— 每次开局都会执行 cfg = DIFFS[...]，改 cfg 会被覆盖）
+   1) 世界变大后鱼相应补一点
+   2) 刷怪节奏放慢
+   3) 最终体型（winSize）调小，保证长满后仍明显小于 Boss */
+const WIN_CAP = { easy: 62, hard: 72, hell: 80 };
+const COIN_MUL = { easy: 1, hard: 1.5, hell: 2 };   // 积分倍率：简单 1× / 困难 1.5× / 地狱 2×
+const ENDLESS_COIN_MUL = { easy: 2.0, hard: 2.5, hell: 3.0 };   // 无尽模式积分倍率：简单 2× / 困难 2.5× / 地狱 3×
+if (typeof DIFFS !== 'undefined' && DIFFS) {
+  Object.keys(DIFFS).forEach(k => {
+    const d = DIFFS[k];
+    if (!d) return;
+    if (d.fishCap) d.fishCap = Math.round(d.fishCap * 1.5);
+    if (d.spawnRate) d.spawnRate = d.spawnRate * .6;
+    if (WIN_CAP[k]) d.winSize = WIN_CAP[k];
+    if (COIN_MUL[k]) d.coinMul = COIN_MUL[k];
+  });
+}
+function coinMul() {
+  // 无尽模式用独立倍率（简单 2× / 困难 2.5× / 地狱 3×），普通模式用难度倍率
+  if (GAME_MODE === 'endless') return (cfg && ENDLESS_COIN_MUL[CUR_DIFF]) || 2.0;
+  return (cfg && cfg.coinMul) || 1;
+}   // 当前难度的积分倍率
+
+/* ---- 怪物生成速度独立乘区 ------------------------------------------------
+   把每个难度的 spawnRate 存成「基准值」，再用 getter 动态返回 基准 × SPAWN_MUL，
+   这样原版主循环里的 `Math.random() < cfg.spawnRate` 读取时自动套上倍率，
+   且与难度完全独立相乘（简单/困难/地狱各乘各的），改动设置即时生效、无需重开。 */
+if (typeof DIFFS !== 'undefined' && DIFFS) {
+  Object.keys(DIFFS).forEach(k => {
+    const d = DIFFS[k];
+    if (!d) return;
+    const base = d.spawnRate;
+    if (typeof base !== 'number') return;
+    Object.defineProperty(d, 'spawnRate', {
+      get: function () { return base * SPAWN_MUL; },
+      enumerable: true, configurable: true
+    });
+  });
+}
+
+const _drawBackground = drawBackground;
+drawBackground = function (t) {
+  updateCam();                                   // 每帧最开始更新镜头
+  return _drawBackground.apply(this, arguments);
+};
+const _drawFish = drawFish;
+drawFish = function (f, t) {
+  ctx.save(); ctx.translate(-cam.x, -cam.y);
+  _drawFish.apply(this, arguments);
+  ctx.restore();
+};
+/* 指针是屏幕坐标，不换算的话玩家只能在世界左上角打转 */
+const _setPointer = setPointer;
+setPointer = function (x, y) { return _setPointer.call(this, x + cam.x, y + cam.y); };
+
+/* 除 Boss 外的生物（奶龙）稍微改小，画面更透气。
+   ⚠ 注意：原版是按「原始体型」把新鱼摆在世界左右边界上的，缩小体型后必须
+   按新 r 重新摆位，否则鱼会落在回收边界之外、下一帧就被删掉（表现为「吃完不刷新」）。
+   顺带把生成点从「世界边缘」改成「相机视野边缘」——世界比屏幕大，否则新鱼要游很久才看得到。 */
+const FISH_SCALE = .85;
+const FISH_CULL = 170;          // 游出视野这么远就回收，把额度让给视野内的鱼
+const _spawnFish = spawnFish;
+spawnFish = function (anywhere) {
+  const n = fishes.length;
+  _spawnFish.apply(this, arguments);
+  for (let i = n; i < fishes.length; i++) {
+    const f = fishes[i];
+    f.r = Math.max(6, f.r * FISH_SCALE);
+    if (!anywhere) {
+      f.x = f.dir > 0 ? cam.x - f.r * 3 : cam.x + innerWidth + f.r * 3;
+      f.y = clamp(cam.y + rand(20, innerHeight - 20), 40, H - 40);
+    }
+  }
+};
+
+// 绘制：先画 Boss/弹幕，再画玩家（保证 Boss 在鱼之上、玩家之下）
+const _drawPlayer = drawPlayer;
+drawPlayer = function (t) {
+  ctx.save(); ctx.translate(-cam.x, -cam.y);      // Boss/子弹/玩家都用世界坐标
+  try { drawBossLayer(t); } catch (e) { }
+  drawPlayerV2(t);
+  ctx.restore();
+};
+function drawPlayerV2(t) {
+  const p = player;
+  const sk = skinById(S.equipped);
+  const img = equippedImg();
+  const m = metric(img);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  /* 无敌光环：受伤后 / 冲刺中 / 升级选完的缓冲期都会亮起，让「无敌」看得见 */
+  const invLeft = invincibleUntil - performance.now();
+  if (invLeft > 0 && invLeft < 1e8) {
+    const a = Math.min(1, invLeft / 800) * .5 + .25;
+    const rr = p.r * 1.5 + Math.sin(t / 150) * 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,213,74,' + a + ')'; ctx.lineWidth = 3.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, rr * .8, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,255,255,' + (a * .5) + ')'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  ctx.scale(p.dir, 1);
+  const bob = Math.sin(t / 300) * 3;
+  ctx.rotate(Math.sin(t / 350) * 0.06);
+  if (performance.now() < invincibleUntil && Math.floor(t / 120) % 2 === 0) ctx.globalAlpha = 0.4;
+  if (m) {
+    const k = (p.r * 2.35) / m.size;
+    const dw = m.w * k, dh = m.h * k;
+    if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
+    ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
+  } else {
+    ctx.fillStyle = '#ffd54a';
+    ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * .8, 0, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBossLayer(t) {
+  if (!V) return;
+  // 音浪（袋鼠 DJ）：加粗 + 双层描边 + 泛光，让弹幕边缘一目了然
+  for (const w of V.waves) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, TAU);
+    ctx.shadowColor = 'rgba(255,40,80,.95)'; ctx.shadowBlur = 18;
+    ctx.strokeStyle = 'rgba(255,45,90,' + (.9 * w.a) + ')';
+    ctx.lineWidth = 11 * w.a + 4; ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,225,235,' + (.85 * w.a) + ')';
+    ctx.lineWidth = 3 * w.a + 1; ctx.stroke();
+    ctx.restore();
+  }
+  for (const B of V.bosses) {
+    const D = B.def, img = bossImg(D), m = metric(img);
+    // 气场
+    ctx.beginPath(); ctx.arc(B.x, B.y, B.r * .82, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,77,109,' + (.35 + .2 * Math.sin(B.t * 4)) + ')';
+    ctx.lineWidth = 5; ctx.stroke();
+    if (m) {
+      const k = (B.r * 2.4) / m.size;
+      ctx.save();
+      if (B.hitT > 0) ctx.globalAlpha = .9;
+      ctx.drawImage(img, B.x - m.cx * k, B.y - m.cy * k, m.w * k, m.h * k);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#ffd54a'; ctx.beginPath(); ctx.arc(B.x, B.y, B.r, 0, TAU); ctx.fill();
+    }
+    // 核心物
+    for (const o of B.orbs) {
+      if (!o.alive) continue;
+      const open = o.state === 'open', sr = o.r;
+      ctx.save(); ctx.translate(o.x, o.y); ctx.scale(1 + Math.sin(B.t * 8) * .05, 1 + Math.sin(B.t * 8) * .05);
+      ctx.shadowColor = open ? '#6ee7a0' : D.orbC; ctx.shadowBlur = open ? 24 : 12;
+      ctx.fillStyle = open ? 'rgba(10,44,32,.95)' : 'rgba(30,16,24,.95)';
+      const w = sr * 2.1, h = sr * 1.7, rr = sr * .34;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2 + rr, -h / 2); ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, rr);
+      ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, rr); ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, rr);
+      ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, rr); ctx.closePath(); ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = open ? '#6ee7a0' : D.orbC; ctx.stroke();
+      ctx.shadowBlur = 0;
+      /* 核心物上方飘的图标：袋鼠 DJ 换成「外卖袋」贴图，其余 Boss 沿用符号 */
+      if (D.key === 'dj' && ORB_IMG.complete && ORB_IMG.naturalWidth) {
+        const ih = sr * 2.35, iw = ih * (ORB_IMG.naturalWidth / ORB_IMG.naturalHeight);
+        ctx.save();
+        ctx.globalAlpha = open ? 1 : .94;
+        if (open) { ctx.shadowColor = '#6ee7a0'; ctx.shadowBlur = 22; }
+        ctx.drawImage(ORB_IMG, -iw / 2, -sr * 2.02 - ih / 2, iw, ih);
+        ctx.restore();
+      } else {
+        ctx.font = sr * 1.05 + 'px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(open ? '◆' : D.orbIc, 0, -sr * 1.3);
+      }
+      ctx.restore();
+      if (open) {
+        ctx.font = '800 12px system-ui'; ctx.textAlign = 'center';
+        const ty = o.y - sr * (D.key === 'dj' ? 3.55 : 2.1);
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)';
+        ctx.strokeText('吃掉它!', o.x, ty);
+        ctx.fillStyle = '#6ee7a0'; ctx.fillText('吃掉它!', o.x, ty);
+      }
+    }
+  }
+  // 蛇形函数线（画成一条会发光的曲线）
+  if (V.snakes.length) {
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const s of V.snakes) {
+      const n = s.pts.length;
+      if (n < 2) continue;
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.beginPath();
+        ctx.moveTo(s.pts[0].x, s.pts[0].y);
+        for (let k = 1; k < n; k++) ctx.lineTo(s.pts[k].x, s.pts[k].y);
+        if (pass === 0) { ctx.strokeStyle = 'rgba(126,200,255,.26)'; ctx.lineWidth = s.w * 2.7; }
+        else { ctx.strokeStyle = '#bfe6ff'; ctx.lineWidth = s.w * .95; }
+        ctx.stroke();
+      }
+      const h = s.pts[n - 1];
+      ctx.beginPath(); ctx.arc(h.x, h.y, s.w * 1.15, 0, TAU);
+      ctx.fillStyle = '#eaf6ff'; ctx.fill();
+    }
+    ctx.restore();
+  }
+  // 弹幕
+  for (const b of V.bullets) {
+    ctx.save(); ctx.shadowColor = b.c; ctx.shadowBlur = 14;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fillStyle = b.c; ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.arc(b.x - b.r * .28, b.y - b.r * .3, b.r * .34, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
+    ctx.restore();
+  }
+  // 粒子
+  for (let i = V.parts.length - 1; i >= 0; i--) {
+    const p = V.parts[i];
+    p.x += p.vx * dtFrame; p.y += p.vy * dtFrame;
+    p.vx *= .94; p.vy *= .94; p.life -= dtFrame; p.r *= .98;
+    if (p.life <= 0) { V.parts.splice(i, 1); continue; }
+    ctx.globalAlpha = clamp(p.life * 1.8, 0, 1);
+    ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// 重置 / 结算
+const _reset = reset;
+reset = function () { _reset.apply(this, arguments); newV(); V.prevLives = lives; bossbar.classList.remove('on'); lvov.classList.add('hidden'); };
+const _endGame = endGame;
+endGame = function (win) {
+  /* 关键规则：长到目标体型【不再直接通关】——
+     必须把全部 Boss 打完才算赢，否则体型到顶也只是「卡住」继续玩下去。 */
+  if (win && V && !V.allBossDown) {
+    if (player) player.r = Math.min(player.r, WIN_SIZE * .99);
+    const now = performance.now();
+    if (!V.capHintAt || now - V.capHintAt > 5000) {
+      V.capHintAt = now;
+      toast('体型已到上限 · 击败全部 ' + BOSS_DEFS.length + ' 个 Boss 才能通关', true);
+    }
+    return;
+  }
+  const run = V ? V.coinsRun : 0;
+  S.coins += run; saveS(); updateShopCoin();
+  _endGame.apply(this, arguments);
+  // 结算补充信息
+  try {
+    const t = document.getElementById('overText');
+    if (t && V) {
+      if (GAME_MODE === 'endless') {
+        const st = V.endless ? V.endless.star : 0;
+        const starTxt = st > 0 ? ('无尽第 ' + endlessStarsText(st) + ' 颗星') : '尚未进入无尽';
+        t.innerHTML += `<br><span style="color:#ffd54a;font-size:14px">无尽模式 · ${starTxt} · 历史最高 ★${(S.endlessBest || 0)} · 本局积分 +${fmt(run)} · 最高连击 ${V.maxCombo}</span>`;
+      } else {
+        t.innerHTML += `<br><span style="color:#9fc0d4;font-size:14px">本局积分 +${fmt(run)} · 击败 Boss ${V.bossDone}/3 · 最高连击 ${V.maxCombo}</span>`;
+      }
+    }
+  } catch (e) { }
+};
+const _start = start;
+start = function () { _start.apply(this, arguments); lastV2 = performance.now(); };
+
+function updateShopCoin() {
+  const e = document.getElementById('v2coin'); if (e) e.textContent = fmt(S.coins + (V ? V.coinsRun : 0));
+}
+
+/* ------------------------------------------------------------ 11. v2 主循环 */
+let lastV2 = performance.now(), dtFrame = 1 / 60;
+function loopV2(now) {
+  requestAnimationFrame(loopV2);
+  dtFrame = Math.min(0.05, (now - lastV2) / 1000);
+  lastV2 = now;
+  if (state === 'playing') updateV2(dtFrame, now);
+  else if (state === 'levelup' && player) {
+    try {
+      ctx.save(); ctx.translate(-cam.x, -cam.y);
+      drawBossLayer(now); drawPlayerV2(now);
+      ctx.restore();
+    } catch (e) { }
+  }
+  updateHUD2();
+  drawHurtFx(now, dtFrame);      // 扣血特效覆盖层（最上层）
+  drawBossIndicator(now);        // Boss 方向指示（屏幕外时边缘箭头）
+}
+
+/* ---- Boss 方向指示器 -------------------------------------------------------
+   Boss 在屏幕外时，沿「屏幕中心 → Boss」方向在屏幕边缘画一个脉动的红色箭头
+   + 「BOSS」小字，让玩家随时知道 Boss 大概在哪个方向。Boss 在视野内则不画。 */
+function drawBossIndicator(now) {
+  if (state !== 'playing' || !V || !V.bosses.length || !player) return;
+  // 多 Boss 时指向最近的一个
+  let b = V.bosses[0];
+  for (const B of V.bosses) {
+    if (Math.hypot(B.x - player.x, B.y - player.y) < Math.hypot(b.x - player.x, b.y - player.y)) b = B;
+  }
+  const sx = b.x - cam.x, sy = b.y - cam.y;
+  const vw = innerWidth, vh = innerHeight;
+  const pad = 46;                                   // 距边缘的留白
+  const onScreen = sx > pad && sx < vw - pad && sy > pad && sy < vh - pad;
+  if (onScreen) return;
+
+  // 从屏幕中心指向 Boss 的方向
+  const dx = sx - vw / 2, dy = sy - vh / 2;
+  const ang = Math.atan2(dy, dx);
+  // 与屏幕内缩矩形的交点（箭头落点）
+  const mx = vw / 2 - pad, my = vh / 2 - pad;
+  const t = Math.min(
+    dx !== 0 ? mx / Math.abs(dx) : Infinity,
+    dy !== 0 ? my / Math.abs(dy) : Infinity
+  );
+  const ax = vw / 2 + dx * t, ay = vh / 2 + dy * t;
+
+  const pulse = .65 + Math.sin(now / 260) * .3;     // 呼吸脉动
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.translate(ax, ay);
+  ctx.rotate(ang);
+  ctx.globalAlpha = pulse;
+
+  // 箭头
+  ctx.beginPath();
+  ctx.moveTo(16, 0); ctx.lineTo(-8, -11); ctx.lineTo(-3, 0); ctx.lineTo(-8, 11);
+  ctx.closePath();
+  ctx.fillStyle = '#ff4d5e';
+  ctx.shadowColor = 'rgba(255,60,80,.9)'; ctx.shadowBlur = 14;
+  ctx.fill();
+
+  // 「BOSS」小字（反转回正，方便读）
+  ctx.rotate(-ang);
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,180,190,.95)';
+  ctx.shadowBlur = 4; ctx.shadowColor = 'rgba(0,0,0,.8)';
+  ctx.fillText('BOSS', 0, -18);
+
+  ctx.restore();
+}
+
+/* ---- 扣血 / 低血量特效 -----------------------------------------------------
+   ① 受伤瞬间：全屏红色渐变闪一下（hurtFlash 衰减）
+   ② 只剩 1 颗心且非地狱难度：屏幕四周持续红色渐晕，像「残血警告」 */
+function drawHurtFx(now, dt) {
+  if (!V) return;
+  if (V.hurtFlash > 0) V.hurtFlash = Math.max(0, V.hurtFlash - dt * 1.6);
+  const lowHp = state === 'playing' && lives === 1 && cfg && cfg.name !== '地狱';
+  const flash = V.hurtFlash;
+  if (flash <= 0 && !lowHp) return;
+
+  const vw = innerWidth, vh = innerHeight;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);      // 用屏幕坐标，忽略镜头
+
+  // ① 受伤闪红：范围更大、边缘更浓，透明度随 hurtFlash 衰减
+  if (flash > 0) {
+    const r = Math.hypot(vw, vh) * .55;
+    const a = Math.min(1, flash * 1.6);
+    const g = ctx.createRadialGradient(vw / 2, vh / 2, r * .2, vw / 2, vh / 2, r);
+    g.addColorStop(0, 'rgba(220,20,20,0)');
+    g.addColorStop(0.5, 'rgba(205,15,15,' + (a * .45) + ')');
+    g.addColorStop(0.8, 'rgba(190,10,10,' + (a * .8) + ')');
+    g.addColorStop(1, 'rgba(150,5,5,' + Math.min(1, a * 1.15) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.fillStyle = 'rgba(255,30,30,' + (a * .2) + ')';
+    ctx.fillRect(0, 0, vw, vh);
+  }
+
+  // ② 低血量持续渐晕：四周红色晕圈（明显脉动 + 轻微全屏泛红）
+  if (lowHp) {
+    const pulse = 0.72 + Math.sin(now / 240) * 0.2;       // 强呼吸脉动
+    const r = Math.hypot(vw, vh) * .55;
+    const g = ctx.createRadialGradient(vw / 2, vh / 2, r * .2, vw / 2, vh / 2, r);
+    g.addColorStop(0, 'rgba(220,20,20,0)');
+    g.addColorStop(0.5, 'rgba(205,15,15,' + (pulse * .45) + ')');
+    g.addColorStop(0.8, 'rgba(190,10,10,' + (pulse * .8) + ')');
+    g.addColorStop(1, 'rgba(150,5,5,' + Math.min(1, pulse * 1.15) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, vw, vh);
+    // 全屏泛红，随脉动呼吸
+    ctx.fillStyle = 'rgba(255,30,30,' + (pulse * .18) + ')';
+    ctx.fillRect(0, 0, vw, vh);
+  }
+
+  ctx.restore();
+}
+
+function updateV2(dt, now) {
+  if (!V) return;
+  const P = player;
+
+  /* 体型上限：长到目标体型就停住（此时仍明显小于 Boss）；通关要靠打完 Boss */
+  if (P && P.r > WIN_SIZE * .99) P.r = WIN_SIZE * .99;
+
+  /* --- 世界比屏幕大：游出视野太远的鱼回收掉，把额度留给视野内的鱼 --- */
+  if (fishes.length) {
+    const lx = cam.x - FISH_CULL, rx = cam.x + innerWidth + FISH_CULL;
+    for (let i = fishes.length - 1; i >= 0; i--) {
+      const f = fishes[i];
+      if (f.x < lx || f.x > rx) fishes.splice(i, 1);
+    }
+  }
+
+  /* --- 吃鱼检测（通过 score/生命 变化，零侵入原版）--- */
+  if (score > V.prevScore) {
+    const d = score - V.prevScore;
+    V.prevScore = score;
+    V.eatCount++;
+    V.combo++; V.comboT = 2.4;
+    V.maxCombo = Math.max(V.maxCombo, V.combo);
+    V.coinsRun += Math.round(d * 0.01 * (1 + V.up.combo) * coinMul());   // 积分 = 得分 × 0.01 × (1+连击大师) × 难度倍率
+    gainExp(1 + V.up.harvest);
+    if (V.combo > 0 && V.combo % 5 === 0) sfx(520 + V.combo * 20, .1, 'square', .06, 1000);
+  } else { V.prevScore = score; }
+  if (V.comboT > 0) { V.comboT -= dt; if (V.comboT <= 0) V.combo = 0; }
+  if (V.prevLives !== lives) { if (lives < V.prevLives) V.combo = 0; V.prevLives = lives; }
+
+  /* --- 冲刺位移 --- */
+  if (V.dashCd > 0) V.dashCd -= dt;
+  if (V.dashT > 0) {
+    V.dashT -= dt;
+    P.x = clamp(P.x + V.dashX * 1250 * dt, P.r, W - P.r);
+    P.y = clamp(P.y + V.dashY * 1250 * dt, P.r, H - P.r);
+    pointer.x = P.x; pointer.y = P.y;
+    if (Math.random() < .8) V.parts.push({ x: P.x, y: P.y, vx: rnd(-40, 40), vy: rnd(-40, 40), r: rnd(3, 7), life: .35, c: '#8fd6ff' });
+  }
+  /* --- 疾风：额外吸附指针（减弱：叠加多层时之前会把速度拉得忽快忽慢） --- */
+  if (V.up.swift) {
+    const k = Math.min(.35, dt * 1.1 * V.up.swift);
+    P.x += (pointer.x - P.x) * k; P.y += (pointer.y - P.y) * k;
+  }
+  P.x = clamp(P.x, P.r, W - P.r); P.y = clamp(P.y, P.r, H - P.r);
+
+  /* --- 吸星：把小鱼拉过来 --- */
+  if (V.up.magnet) {
+    const R = P.r * 4 + 60;
+    for (const f of fishes) {
+      const dx = P.x - f.x, dy = P.y - f.y, d = Math.hypot(dx, dy);
+      if (d < R && d > 1 && f.r < P.r) {
+        const pull = (1 - d / R) * 320 * dt;
+        f.x += dx / d * pull; f.y += dy / d * pull;
+      }
+    }
+  }
+  /* --- 暴食：能吃掉更大的奶龙 --- */
+  if (V.up.devour) {
+    const lim = P.r * (0.95 + V.up.devour * 0.16);
+    for (let i = fishes.length - 1; i >= 0; i--) {
+      const f = fishes[i];
+      if (f.r <= P.r * .95 || f.r > lim) continue;
+      const fy = f.y + Math.sin(now / 400 + f.wobble) * f.wobbleAmp * .15;
+      if (Math.hypot(f.x - P.x, fy - P.y) < P.r * .85 + f.r * .9) {
+        playEat();
+        score += Math.round(f.r);
+        P.r += (1.6 * cfg.growthMul) * (f.r / P.r) + .3 * cfg.growthMul;
+        fishes.splice(i, 1); spawnFish(false); updateHud();
+      }
+    }
+  }
+
+  /* --- Boss 调度 --- */
+  const WIN = cfg.winSize;
+  const triggers = [WIN * .42, WIN * .68, WIN * .95];
+  // 进入无尽星数循环后，Boss 由 endless 推进逻辑按波生成，这里不再按体型调度；
+  // 但无尽模式的前 3 个 Boss（未进循环前）仍走正常调度
+  if (!V.bosses.length && !(GAME_MODE === 'endless' && V.endless.active)) {
+    if (V.bossIdx < 0) {
+      if (!V.trig[0] && P.r >= triggers[0]) { V.trig[0] = true; spawnBoss(0); }
+    } else if (V.bossIdx < 2 && V.nextBossAt && now >= V.nextBossAt) {
+      const nx = V.bossIdx + 1;
+      if (!V.trig[nx] && P.r >= triggers[nx] * .82) { V.trig[nx] = true; spawnBoss(nx); }
+      else V.nextBossAt = now + 3000;
+    }
+  }
+  updateBoss(dt);
+}
+
+function updateHUD2() {
+  if (!V) return;
+  const c = document.getElementById('v2coin'); if (c) c.textContent = fmt(S.coins + V.coinsRun);
+  const cm = document.getElementById('v2combo'); if (cm) cm.textContent = V.combo;
+  const lt = document.getElementById('lvt'); if (lt) lt.textContent = 'Lv.' + V.lvl;
+  const db = document.getElementById('dashbtn');
+  if (db) {
+    if (V.dashCd > 0) { db.classList.add('cd'); db.querySelector('b').textContent = V.dashCd.toFixed(1); }
+    else { db.classList.remove('cd'); db.querySelector('b').textContent = '冲刺'; }
+  }
+}
+
+requestAnimationFrame(loopV2);
+updateShopCoin();
+
+/* ---- 调试出口（便于自动化测试，不影响游戏）---- */
+window.__v2 = {
+  get V(){ return V; }, get S(){ return S; },
+  SKINS, UPGRADES, BOSS_DEFS,
+  tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice,
+  get cam() { return cam; }, BOSS_SIZE,
+  get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; }
+};
+})();
+
