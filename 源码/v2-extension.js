@@ -622,7 +622,10 @@ function newV() {
     bullets: [], waves: [], curves: [], parts: [],
     mathFn: -1,   /* M2：高数 Boss 当前循环的函数编号（-1 = 尚未随机） */
     prevScore: 0, prevLives: (typeof lives === 'number' ? lives : 3),
-    hurtFlash: 0, surviveT: 0
+    hurtFlash: 0, surviveT: 0,
+    /* M6：皮肤专属技能状态（道具动画 / 护盾 / 缩小 / 气泡 / 弹丸） */
+    m6Item: null, m6Shield: false, m6ShieldFx: 0, m6ShrinkT: 0, m6BubbleT: 0,
+    m6Shots: [], m6MinR: 26, m6PreR: 26
   };
 }
 newV();
@@ -1161,7 +1164,7 @@ function clickSkin(id) {
 /* ------------------------------------------------------------ 7. 冲刺 */
 const DASH_INVULN = 3000;      // 冲刺无敌时长（3 秒）
 let lastTap = 0;
-function tryDash() {
+function tryDashCore() {
   if (state !== 'playing' || !V) return;
   if (V.dashCd > 0) return;
   let dx = 0, dy = 0;
@@ -1178,6 +1181,203 @@ function tryDash() {
   }
 }
 dashbtn.onclick = tryDash;
+
+/* ============================================================ 12. M6 皮肤专属技能
+   双击/冲刺按钮按所装备皮肤替换为专属技能（其他皮肤保持原版冲刺）：
+   - 魔芋爽：掏出魔芋串吃掉 → 回 10 滴血（吃东西音效）
+   - 冰红茶：掏出冰红茶喝掉 → 回 20 滴血（喝东西音效）
+   - 乐事薯片：举薯片护盾 → 挡下下一次攻击（薯片碎音效）
+   - 线性代数：头顶居中靠上冒出白底黑字气泡「QᴧQᵀ难。。我大脑要变小脑了」→ 缩成地图最小体型 10 秒
+   - 嘉豪：拿枪射击最近 Boss → 一次 −10（开枪音效）
+   - 奶鱼：拿金叉子射击最近 Boss → 一次 −15
+   - 香蕉：扔香蕉砸最近 Boss → 一次 −20（扔东西音效）
+   道具贴图大小约为玩家半个身子；冷却与原版冲刺共用（10 秒，闪充可减）。 */
+const M6_SRC = window.V2_M6_SRC || {};
+const M6_IMG = {};
+for (const k in M6_SRC) { const im = new Image(); im.src = M6_SRC[k]; M6_IMG[k] = im; }
+
+const M6_SKILLS = {
+  moyushuang:    { kind: 'heal',  heal: 10, item: 'moyu',   snd: 'eat',   btn: '吃魔芋' },
+  binghongcha:   { kind: 'heal',  heal: 20, item: 'icetea', snd: 'drink', btn: '喝红茶' },
+  leshi:         { kind: 'shield',                                        btn: '薯片盾' },
+  xiandaishuxue: { kind: 'shrink',                                        btn: '变小' },
+  jiahao:        { kind: 'shoot', dmg: 10, item: 'gun',    snd: 'gun',   btn: '射击' },
+  naiyu:         { kind: 'shoot', dmg: 15, item: 'fork',   snd: 'gun',   btn: '叉击' },
+  xiangjiao:     { kind: 'shoot', dmg: 20, item: 'banana', snd: 'throw', btn: '扔香蕉' }
+};
+
+/* M6 音效合成（WebAudio 现场合成，无需外链素材）：
+   噪声爆发 = 枪声 / 薯片碎；三连下滑音 = 咕嘟喝水；扫频+气流 = 扔出 */
+function playNoise(dur, vol, fc) {
+  try {
+    if (GAME_VOL <= 0) return;
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const n = Math.max(1, Math.floor(actx.sampleRate * dur));
+    const buf = actx.createBuffer(1, n, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = fc || 1400;
+    const g = actx.createGain(); g.gain.value = (vol || .3) * GAME_VOL;
+    src.connect(f); f.connect(g); g.connect(actx.destination);
+    src.start();
+  } catch (e) { }
+}
+function playGun()     { playNoise(.22, .5, 3200); sfx(120, .18, 'square', .25, 45); }
+function playCrunch()  { playNoise(.18, .45, 2200); setTimeout(() => playNoise(.12, .3, 1600), 90); }
+function playDrink()   { for (let i = 0; i < 3; i++) setTimeout(() => sfx(320 - i * 60, .12, 'sine', .16, 200 - i * 40), i * 170); }
+function playThrowSnd(){ sfx(700, .25, 'sine', .14, 160); playNoise(.12, .12, 900); }
+function playM6Snd(kind) {
+  if (kind === 'eat') { try { playEat(); } catch (e) { } }
+  else if (kind === 'drink') playDrink();
+  else if (kind === 'gun') playGun();
+  else if (kind === 'throw') playThrowSnd();
+}
+
+function m6StartSkill() {
+  const skl = M6_SKILLS[S.equipped];
+  if (!skl) { tryDashCore(); return; }
+  if (state !== 'playing' || !V || !player) return;
+  if (V.dashCd > 0) return;
+  if (skl.kind === 'shield' && V.m6Shield) { toast('🛡 薯片护盾已在生效中', true); return; }
+  if (skl.kind === 'shrink' && V.m6ShrinkT > 0) { toast('已经够小了……', true); return; }
+  V.dashCd = Math.max(4, 10 - V.up.charge * 2);
+  if (skl.kind === 'heal') {
+    V.m6Item = { id: skl.item, t: .9, dur: .9, heal: skl.heal };
+    playM6Snd(skl.snd);
+  } else if (skl.kind === 'shield') {
+    V.m6Shield = true;
+    V.m6Item = { id: 'chip', t: .8, dur: .8, hold: true };
+    playCrunch();
+    toast('🛡 薯片护盾展开：抵挡 1 次攻击', true);
+  } else if (skl.kind === 'shrink') {
+    V.m6PreR = player.r;
+    player.r = V.m6MinR;                 // 地图最小体型 = 开局尺寸
+    V.m6ShrinkT = 10;
+    V.m6BubbleT = 4;
+    sfx(880, .3, 'sine', .12, 220);
+  } else if (skl.kind === 'shoot') {
+    playM6Snd(skl.snd);
+    V.m6Item = { id: skl.item, t: .7, dur: .7, shoot: true };
+    let tx = null, ty = null, best = 1e9;
+    for (const B of V.bosses) {
+      const d = Math.hypot(B.x - player.x, B.y - player.y);
+      if (d < best) { best = d; tx = B.x; ty = B.y; }
+    }
+    let dx, dy;
+    if (tx !== null) { dx = tx - player.x; dy = ty - player.y; }
+    else if (pointer) { dx = pointer.x - player.x; dy = pointer.y - player.y; }
+    else { dx = player.dir; dy = 0; }
+    const m = Math.hypot(dx, dy) || 1;
+    V.m6Shots.push({ x: player.x, y: player.y, vx: dx / m * 620, vy: dy / m * 620,
+      dmg: skl.dmg, life: 2.2, item: skl.item, rot: Math.atan2(dy, dx) });
+  }
+}
+function tryDash() { m6StartSkill(); }
+
+/* M6 状态推进：道具动画计时 / 缩小恢复 / 弹丸飞行与命中 */
+function updateM6(dt) {
+  if (V.m6Item) { V.m6Item.t -= dt; if (V.m6Item.t <= 0) V.m6Item = null; }
+  if (V.m6ShieldFx > 0) V.m6ShieldFx -= dt;
+  if (V.m6BubbleT > 0) V.m6BubbleT -= dt;
+  if (V.m6ShrinkT > 0) {
+    V.m6ShrinkT -= dt;
+    if (V.m6ShrinkT <= 0) { V.m6ShrinkT = 0; player.r = V.m6PreR; toast('终于缓过来了，变回原来的大小', true); }
+  }
+  /* 吃/喝回血：道具递到嘴边（动画中点）时生效一次 */
+  if (V.m6Item && V.m6Item.heal && !V.m6Item.applied && V.m6Item.t <= V.m6Item.dur * .5) {
+    V.m6Item.applied = true;
+    V.hp = Math.min(V.maxHp, V.hp + V.m6Item.heal);
+    updateHud();
+    toast('♥ 回复 ' + V.m6Item.heal + ' 滴血', true);
+    for (let i = 0; i < 14; i++) V.parts.push({ x: player.x, y: player.y, vx: rnd(-90, 90), vy: rnd(-140, -30), r: rnd(2, 5), life: rnd(.4, .8), c: '#7dff9a' });
+  }
+  /* 弹丸：飞行 → 撞 Boss 结算伤害 */
+  for (let i = V.m6Shots.length - 1; i >= 0; i--) {
+    const s = V.m6Shots[i];
+    s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+    let hit = false;
+    for (const B of V.bosses) {
+      if (Math.hypot(B.x - s.x, B.y - s.y) < B.r * .55 + 14) { damageBoss(B, s.dmg, 'm6'); hit = true; break; }
+    }
+    if (hit || s.life <= 0) {
+      if (hit) {
+        for (let k = 0; k < 12; k++) V.parts.push({ x: s.x, y: s.y, vx: rnd(-180, 180), vy: rnd(-180, 180), r: rnd(2, 5), life: rnd(.25, .5), c: '#ffd54a' });
+        playCrunch();
+      }
+      V.m6Shots.splice(i, 1);
+    }
+  }
+}
+
+/* M6 世界层绘制：护盾 / 使用中道具 / 飞行弹丸（世界坐标，画在 Boss 层里） */
+function drawM6World(t) {
+  if (!V || !player) return;
+  const p = player;
+  const drawSpr = (id, x, y, sz, rot, alpha) => {
+    const im = M6_IMG[id];
+    if (!(im && im.complete && im.naturalWidth)) return;
+    ctx.save();
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.translate(x, y);
+    if (rot) ctx.rotate(rot);
+    ctx.drawImage(im, -sz / 2, -sz / 2, sz, sz);
+    ctx.restore();
+  };
+  /* 薯片护盾：身前悬浮 + 淡金护圈；碎裂期渐隐 */
+  if (V.m6Shield || V.m6ShieldFx > 0) {
+    const a = V.m6Shield ? .95 : Math.max(0, V.m6ShieldFx / .7);
+    const bob = Math.sin(t / 220) * 3;
+    drawSpr('chip', p.x + p.r * .9, p.y - p.r * .4 + bob, p.r * 1.6, Math.sin(t / 300) * .12, a);
+    if (V.m6Shield) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,220,120,.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.5 + Math.sin(t / 260) * 2, 0, TAU); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  /* 使用中的道具：吃/喝递向嘴边，举枪/叉微抬起 */
+  if (V.m6Item) {
+    const pr = 1 - V.m6Item.t / V.m6Item.dur;
+    const sz = p.r * 1.15;                                   // ≈半个身子
+    const rise = V.m6Item.hold ? 0 : pr * p.r * .5;
+    const a = V.m6Item.hold || pr < .8 ? 1 : (1 - pr) * 5;
+    const rot = V.m6Item.shoot ? -.35 : Math.sin(t / 160) * .1;
+    drawSpr(V.m6Item.id, p.x + p.r * .8, p.y - p.r * .2 - rise + Math.sin(t / 250) * 2, sz, rot, a);
+  }
+  /* 飞行弹丸 */
+  for (const s of V.m6Shots) drawSpr(s.item, s.x, s.y, p.r * .9, s.rot, 1);
+}
+
+/* M6 白底黑字气泡（屏幕坐标，居中靠上）：线性代数「变小」时吐槽 */
+function drawM6Bubble() {
+  if (!V || V.m6BubbleT <= 0) return;
+  const a = Math.min(1, V.m6BubbleT / .4);
+  const vw = innerWidth, vh = innerHeight;
+  const bw = Math.min(430, vw * .78), bh = 62;
+  const x = vw / 2 - bw / 2, y = vh * .15;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(255,255,255,.96)';
+  ctx.strokeStyle = 'rgba(40,40,60,.85)'; ctx.lineWidth = 2;
+  const r = 16;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + bw, y, x + bw, y + bh, r);
+  ctx.arcTo(x + bw, y + bh, x, y + bh, r);
+  ctx.arcTo(x, y + bh, x, y, r);
+  ctx.arcTo(x, y, x + bw, y, r);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(vw / 2 - 9, y + bh - 1); ctx.lineTo(vw / 2 + 9, y + bh - 1); ctx.lineTo(vw / 2, y + bh + 14);
+  ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.fill();
+  ctx.fillStyle = '#141420';
+  ctx.font = '900 17px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('QᴧQᵀ难。。我大脑要变小脑了', vw / 2, y + bh / 2);
+  ctx.restore();
+}
+
 /* 移动端浏览器会在 touchstart 后补发合成的 mousedown，
    一次点按被计成两次「tap」，导致单击就触发冲刺。
    这里记录最近一次触摸时间，忽略其后 600ms 内的合成鼠标事件。 */
@@ -1755,6 +1955,15 @@ function showEndlessTitle(mainText, starText) {
 function hitPlayer(dmg, fromBoss) {
   const now = performance.now();
   if (now < invincibleUntil) return;
+  /* M6：薯片护盾 —— 抵挡 1 次攻击后碎裂 */
+  if (V.m6Shield) {
+    V.m6Shield = false;
+    V.m6ShieldFx = .7;
+    try { playCrunch(); } catch (e) { }
+    for (let i = 0; i < 22; i++) V.parts.push({ x: player.x, y: player.y, vx: rnd(-220, 220), vy: rnd(-220, 220), r: rnd(2, 6), life: rnd(.3, .6), c: '#ffe28a' });
+    toast('🛡 薯片护盾碎裂！攻击被挡下', true);
+    return;
+  }
   beep('death');
   V.combo = 0;
   V.hurtFlash = 1;                 // 触发全屏扣血闪红特效
@@ -2171,6 +2380,8 @@ function drawPlayerV2(t) {  const p = player;
 
 function drawBossLayer(t) {
   if (!V) return;
+  /* M6：皮肤技能世界层（护盾/道具/弹丸，画在 Boss 之下、玩家之下） */
+  drawM6World(t);
   /* M2：袋鼠 DJ 音浪 → 水涟漪动效（参考 AE 水涟漪素材）：
      三圈同心涟漪 + 正弦波纹扰动 + 青蓝辉光 + 白色高光芯，纵向略压扁模拟水面透视 */
   for (const w of V.waves) {
@@ -2403,6 +2614,9 @@ start = function () {
     V.maxHp = hp0;
     if (!(V.hp > 0) || V.hp > hp0) V.hp = hp0;
     V.surviveT = performance.now();
+    /* M6：记录开局体型 = 地图最小尺寸（线性代数「变小」技能用） */
+    V.m6MinR = player ? player.r : 26;
+    V.m6PreR = player ? player.r : 26;
     hpbox.classList.add('on');
   }
 };
@@ -2428,6 +2642,7 @@ function loopV2(now) {
   updateHUD2();
   drawHurtFx(now, dtFrame);      // 扣血特效覆盖层（最上层）
   drawBossIndicator(now);        // Boss 方向指示（屏幕外时边缘箭头）
+  drawM6Bubble();                // M6：线性代数吐槽气泡（屏幕坐标，居中靠上）
 }
 
 /* ---- Boss 方向指示器 -------------------------------------------------------
@@ -2534,6 +2749,8 @@ function drawHurtFx(now, dt) {
 function updateV2(dt, now) {
   if (!V) return;
   const P = player;
+  /* M6：皮肤技能状态推进 */
+  updateM6(dt);
 
   /* 体型上限：长到目标体型就停住（此时仍明显小于 Boss）；通关要靠打完 Boss */
   if (P && P.r > WIN_SIZE * .99) P.r = WIN_SIZE * .99;
@@ -2602,7 +2819,8 @@ function updateV2(dt, now) {
       if (Math.hypot(f.x - P.x, fy - P.y) < P.r * .85 + f.r * .9) {
         playEat();
         score += Math.round(f.r);
-        P.r += (1.6 * cfg.growthMul) * (f.r / P.r) + .3 * cfg.growthMul;
+        /* M6：线性代数「变小」期间暂停成长，保证 10 秒内保持最小体型 */
+        if (!(V.m6ShrinkT > 0)) P.r += (1.6 * cfg.growthMul) * (f.r / P.r) + .3 * cfg.growthMul;
         fishes.splice(i, 1); spawnFish(false); updateHud();
       }
     }
@@ -2663,8 +2881,10 @@ function updateHUD2() {
   }
   const db = document.getElementById('dashbtn');
   if (db) {
+    /* M6：皮肤专属技能按钮文案（无技能皮肤保持「冲刺」） */
+    const skl = M6_SKILLS[S.equipped];
     if (V.dashCd > 0) { db.classList.add('cd'); db.querySelector('b').textContent = V.dashCd.toFixed(1); }
-    else { db.classList.remove('cd'); db.querySelector('b').textContent = '冲刺'; }
+    else { db.classList.remove('cd'); db.querySelector('b').textContent = skl ? skl.btn : '冲刺'; }
   }
   /* M5：旋转水波技能按钮冷却 */
   const sb = document.getElementById('spinbtn');
@@ -2691,7 +2911,8 @@ window.__v2 = {
   get V(){ return V; }, get S(){ return S; }, get player(){ return player; },
   SKINS, UPGRADES, BOSS_DEFS,
   tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice, playStartJingle,
-  damageBoss, trySpinAttack,
+  damageBoss, trySpinAttack, hitPlayer,
+  M6_SKILLS, get m6Shots() { return V ? V.m6Shots : []; },
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
   get cloudUser() { return cloudUser; },
