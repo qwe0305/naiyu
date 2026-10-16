@@ -316,12 +316,56 @@ function playBossVoice() {
   } catch (e) { }
 }
 /* ------------------------------------------------------------ 2. 存档 */
-const SKEY = 'sealV2';
+/* M8 存档健壮性加固：
+   1) 双键备份 —— 主键写失败（配额满/隐私模式）自动落备份键，读时主键损坏回退备份键
+   2) 版本号 —— 存档带 v 字段，读档校验结构（coins 非数字等）自动修复默认值
+   3) 写入防抖 —— saveS 高频调用时 300ms 合并成一次真实 IO
+   4) 兜底时机 —— 页面隐藏/关闭时立即 flush，结算/购买不丢档 */
+const SKEY = 'sealV2', SKEY_BAK = 'sealV2_bak', SVER = 3;
+const S_DEFAULT = { coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 };
+function m8SanitizeS(raw) {
+  const s = Object.assign({}, S_DEFAULT, raw && typeof raw === 'object' ? raw : {});
+  if (!Array.isArray(s.owned) || !s.owned.length) s.owned = ['classic'];
+  if (typeof s.coins !== 'number' || !isFinite(s.coins) || s.coins < 0) s.coins = 0;
+  if (typeof s.equipped !== 'string' || !s.equipped) s.equipped = 'classic';
+  if (typeof s.bossKilled !== 'number' || !isFinite(s.bossKilled) || s.bossKilled < 0) s.bossKilled = 0;
+  s.v = SVER;
+  return s;
+}
+function m8ReadKey(k) {
+  try {
+    const t = localStorage.getItem(k);
+    if (!t) return null;
+    const o = JSON.parse(t);
+    return (o && typeof o === 'object') ? o : null;
+  } catch (e) { return null; }
+}
 let S = (function () {
-  try { return Object.assign({ coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 }, JSON.parse(localStorage.getItem(SKEY) || '{}')); }
-  catch (e) { return { coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 }; }
+  /* 主键 → 备份键 → 默认值，逐级回退 */
+  const raw = m8ReadKey(SKEY) || m8ReadKey(SKEY_BAK);
+  return m8SanitizeS(raw);
 })();
-const saveS = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch (e) { } };
+let _sSaveTimer = null, _sDirty = false;
+function m8WriteNow() {
+  const body = JSON.stringify(S);
+  let ok = false;
+  try { localStorage.setItem(SKEY, body); ok = true; } catch (e) { }
+  if (!ok) {                                   // 主键失败（配额/隐私模式）→ 落备份键
+    try { localStorage.setItem(SKEY_BAK, body); ok = true; } catch (e) { }
+  } else {
+    try { localStorage.setItem(SKEY_BAK, body); } catch (e) { }   // 正常时也同步备份
+  }
+  _sDirty = false;
+}
+const saveS = () => {
+  _sDirty = true;
+  if (_sSaveTimer) return;
+  _sSaveTimer = setTimeout(() => { _sSaveTimer = null; m8WriteNow(); }, 300);
+};
+/* 页面隐藏/关闭：立即落盘，防止杀后台丢档 */
+document.addEventListener('visibilitychange', () => { if (document.hidden && _sDirty) m8WriteNow(); });
+window.addEventListener('pagehide', () => { if (_sDirty) m8WriteNow(); });
+setInterval(() => { if (_sDirty) m8WriteNow(); }, 10000);    /* 长局保险丝 */
 
 /* ------------------------------------------------------------ 2.5 云服务：登录 + 排行榜 */
 const CLOUD = (typeof WorkBuddyCloud !== 'undefined' && WorkBuddyCloud.createWorkBuddyCloud)
@@ -347,17 +391,31 @@ const saveP = () => { try { localStorage.setItem(PKEY, JSON.stringify(P)); } cat
 function myDisplayName() { return (P.name || (cloudUser && cloudUser.name) || '玩家').slice(0, 12); }
 function myAvatar() { return P.avatar || (cloudUser && cloudUser.avatarUrl) || ''; }
 
+/* M8 云健壮性：网络请求加超时保护（弱网下 getSession/report 可能挂起几十秒） */
+function cloudTimeout(promise, ms, tag) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(tag + ' timeout')), ms || 8000))
+  ]);
+}
+
 async function refreshCloudUser() {
   if (!CLOUD) return;
   try {
-    const { data: s, error } = await CLOUD.auth.getSession();
+    const { data: s, error } = await cloudTimeout(CLOUD.auth.getSession(), 8000, 'getSession');
     if (error || !s) { cloudUser = null; return; }
     const u = s.user || {};
     cloudUser = { id: u.id, name: u.name || '玩家', avatarUrl: u.avatarUrl || null };
     // 云端若返回了昵称/头像而本地还没有，就先采用
     if (u.name && !P.name) { P.name = u.name; saveP(); }
     if (u.avatarUrl && !P.avatar) { P.avatar = u.avatarUrl; saveP(); }
-  } catch (e) { cloudUser = null; }
+  } catch (e) { cloudUser = null; }   /* 超时/断网：静默降级为未登录，不阻塞游戏 */
+}
+/* 登录状态变化时同步 cloudUser（其他标签页登录/登出、token 刷新失败等场景） */
+if (CLOUD && CLOUD.auth && CLOUD.auth.onAuthStateChange) {
+  try {
+    CLOUD.auth.onAuthStateChange(() => { refreshCloudUser().then(renderLoginBadge); });
+  } catch (e) { }
 }
 
 // 登录弹窗（手机号 + 密码，游戏内完成，不跳转外站）
@@ -385,6 +443,7 @@ function openLogin() {
     '  </div>' +
     '  <div class="loginErr" id="liErr"></div>' +
     '  <button class="v2btn" id="liGo">登录</button>' +
+    '  <button class="v2btn" id="liWx" style="background:linear-gradient(180deg,#3ddc84,#1fb25e);margin-top:8px">微信登录</button>' +
     '  <button class="v2btn" id="liClose">返回</button>' +
     '</div>';
   document.body.appendChild(ov);
@@ -412,6 +471,24 @@ function openLogin() {
   ov.querySelectorAll('.login-tab').forEach(t => t.onclick = () => switchTab(t.dataset.t));
   ov.querySelector('#liClose').onclick = () => { ov.classList.add('hidden'); document.documentElement.classList.remove('v2scroll'); };
   phone.addEventListener('input', () => err(''));
+
+  /* M8：微信登录 —— 跳转微信授权（由云服务 OAuth 中转站托管），回跳后自动换取会话 */
+  ov.querySelector('#liWx').onclick = async () => {
+    err('');
+    if (!CLOUD || !CLOUD.auth.signInWithOAuth) { err('当前环境不支持微信登录'); return; }
+    const wxBtn = ov.querySelector('#liWx');
+    wxBtn.disabled = true;
+    try {
+      const redirectTo = location.origin + location.pathname;
+      const r = await cloudTimeout(CLOUD.auth.signInWithOAuth({ provider: 'wechat', redirectTo }), 12000, 'wx');
+      if (r && r.error) { err('微信登录暂不可用：' + (r.error.message || '服务端未配置微信渠道')); wxBtn.disabled = false; return; }
+      /* 成功时 SDK 已重定向（或返回授权 URL），这里兜底手动跳 */
+      if (r && r.data && r.data.url) location.href = r.data.url;
+    } catch (e) {
+      err('微信登录暂不可用（' + (e.message || '网络异常') + '）');
+      wxBtn.disabled = false;
+    }
+  };
 
   // 发送验证码（注册用）
   sendBtn.onclick = async () => {
@@ -477,11 +554,11 @@ async function cloudLogout() {
   renderLoginBadge();
 }
 
-// 无尽成绩上报（已登录才上报；每玩家只保留历史最佳）
-async function reportEndlessScore(star, surviveSec, bossProgress) {
+// 无尽成绩上报（已登录才上报；每玩家只保留历史最佳；M8：失败自动重试 1 次）
+async function reportEndlessScore(star, surviveSec, bossProgress, _retry) {
   if (!CLOUD || !cloudUser) return;
   try {
-    const { data: s } = await CLOUD.auth.getSession();
+    const { data: s } = await cloudTimeout(CLOUD.auth.getSession(), 8000, 'report.getSession');
     if (!s) return;
     const name = myDisplayName();
     const avatar = myAvatar();
@@ -501,7 +578,10 @@ async function reportEndlessScore(star, surviveSec, bossProgress) {
         owner_name: name, avatar_url: avatar, best_star: star, best_survive: surviveSec, boss_progress: bossProgress
       });
     }
-  } catch (e) { /* 上报失败静默，不影响游戏 */ }
+  } catch (e) {
+    /* M8：失败自动重试 1 次（弱网下首次请求常被掐断），仍失败则静默 */
+    if (!_retry) { setTimeout(() => { try { reportEndlessScore(star, surviveSec, bossProgress, true); } catch (e2) { } }, 4000); }
+  }
 }
 
 // 读取排行榜（公开读）
@@ -2244,43 +2324,73 @@ const V2_BG = new Image();
 if (typeof V2_BG_SRC === 'string' && V2_BG_SRC) V2_BG.src = V2_BG_SRC;
 const v2Bubbles = [];
 let v2BubLast = 0;
+
+/* ============================================================ M8 性能优化
+   掉帧主因：每帧重建渐变对象（分配 churn → GC 卡顿）、每条鱼 shadowBlur、
+   粒子/气泡无上限。对策：渐变缓存、光斑预渲染成离屏贴图、实体数量封顶。 */
+const M8_CACHE = { dgH: 0, dg: null, pillarH: 0, pillar: null, tailGradKey: '', tailGrad: null };
+const M8_MAX_PARTS = 320, M8_MAX_BUBBLES = 40;
+function m8CapParts() {
+  if (V && V.parts && V.parts.length > M8_MAX_PARTS) V.parts.splice(0, V.parts.length - M8_MAX_PARTS);
+}
+function m8BottomGradient() {
+  if (M8_CACHE.dgH !== innerHeight || !M8_CACHE.dg) {
+    const dg = ctx.createLinearGradient(0, innerHeight * .55, 0, innerHeight);
+    dg.addColorStop(0, 'rgba(4,32,54,0)'); dg.addColorStop(1, 'rgba(4,32,54,.42)');
+    M8_CACHE.dg = dg; M8_CACHE.dgH = innerHeight;
+  }
+  return M8_CACHE.dg;
+}
+function m8PillarGradient() {
+  if (M8_CACHE.pillarH !== innerHeight || !M8_CACHE.pillar) {
+    const g = ctx.createLinearGradient(0, 0, 0, innerHeight);
+    g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    M8_CACHE.pillar = g; M8_CACHE.pillarH = innerHeight;
+  }
+  return M8_CACHE.pillar;
+}
+/* 柔光椭圆预渲染：一次性画到离屏画布，之后每帧 drawImage（比 7 次 createRadialGradient 便宜一个量级） */
+const M8_SPOT = (function () {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const c2 = cv.getContext('2d');
+  const g = c2.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(190,235,255,.085)'); g.addColorStop(1, 'rgba(190,235,255,0)');
+  c2.fillStyle = g; c2.fillRect(0, 0, 128, 128);
+  return cv;
+})();
+
 function drawV2Water(t) {
-  /* --- 波光斑：两簇反向漂移的柔光椭圆，低alpha叠加，手机端开销可控 --- */
+  /* --- 波光斑：预渲染贴图缩放绘制（M8：替代每帧 7 个径向渐变） --- */
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < 7; i++) {
     const px = (i * 197 + Math.sin(t / 2600 + i * 2.1) * 90 + t / 55) % (innerWidth + 260) - 130;
     const py = innerHeight * (.14 + .11 * (i % 3)) + Math.sin(t / 1900 + i) * 26;
     const rw = 110 + (i % 4) * 46, rh = 13 + (i % 3) * 7;
-    const g = ctx.createRadialGradient(px, py, 0, px, py, rw);
-    g.addColorStop(0, 'rgba(190,235,255,.085)');
-    g.addColorStop(1, 'rgba(190,235,255,0)');
-    ctx.fillStyle = g;
-    ctx.save(); ctx.translate(px, py); ctx.rotate(-.16 + (i % 2) * .1); ctx.scale(1, rh / rw); ctx.translate(-px, -py);
-    ctx.beginPath(); ctx.arc(px, py, rw, 0, TAU); ctx.fill();
+    ctx.save(); ctx.translate(px, py); ctx.rotate(-.16 + (i % 2) * .1); ctx.scale(1, rh / rw);
+    ctx.drawImage(M8_SPOT, px - rw, py - rw, rw * 2, rw * 2);
     ctx.restore();
   }
   ctx.restore();
-  /* --- 摇曳光柱：4 根，从画面顶部斜插下来，透明度呼吸 --- */
+  /* --- 摇曳光柱：渐变缓存（M8），仅高度变化时重建 --- */
   ctx.save();
   ctx.globalAlpha = .10;
+  const pg = m8PillarGradient();
+  ctx.fillStyle = pg;
   for (let i = 0; i < 4; i++) {
     const x = (i * innerWidth / 3.6 + Math.sin(t / 3400 + i * 1.7) * 70) - cam.x * .04;
     const w0 = 60 + i * 18, sway = Math.sin(t / 2200 + i) * 90;
-    const g = ctx.createLinearGradient(0, 0, 0, innerHeight);
-    g.addColorStop(0, 'rgba(255,255,255,.55)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(x, -20); ctx.lineTo(x + w0, -20);
     ctx.lineTo(x + w0 + 190 + sway, innerHeight); ctx.lineTo(x + 40 + sway, innerHeight);
     ctx.closePath(); ctx.fill();
   }
   ctx.restore();
-  /* --- 上升气泡：与原版节奏一致（每帧 8% 概率生成），扩展层自管自收 --- */
+  /* --- 上升气泡（M8：数量封顶 40，防长时间游玩内存缓涨） --- */
   if (t - v2BubLast > 90 && Math.random() < .09) {
     v2BubLast = t;
-    v2Bubbles.push({ x: Math.random() * innerWidth, y: innerHeight + 12, r: 2 + Math.random() * 5, s: 28 + Math.random() * 55 });
+    if (v2Bubbles.length < M8_MAX_BUBBLES)
+      v2Bubbles.push({ x: Math.random() * innerWidth, y: innerHeight + 12, r: 2 + Math.random() * 5, s: 28 + Math.random() * 55 });
   }
   ctx.strokeStyle = 'rgba(255,255,255,.38)'; ctx.lineWidth = 1.2;
   for (let i = v2Bubbles.length - 1; i >= 0; i--) {
@@ -2299,10 +2409,8 @@ function drawV2Background(t) {
     const ox = -M - clamp(cam.x * .05, -M, M);
     const oy = -M - clamp(cam.y * .05, -M, M);
     ctx.drawImage(V2_BG, ox, oy, dw, dh);
-    /* 底部加深，保证 HUD 与鱼群可读性 */
-    const dg = ctx.createLinearGradient(0, innerHeight * .55, 0, innerHeight);
-    dg.addColorStop(0, 'rgba(4,32,54,0)'); dg.addColorStop(1, 'rgba(4,32,54,.42)');
-    ctx.fillStyle = dg; ctx.fillRect(0, 0, innerWidth, innerHeight);
+    /* 底部加深，保证 HUD 与鱼群可读性（M8：渐变缓存） */
+    ctx.fillStyle = m8BottomGradient(); ctx.fillRect(0, 0, innerWidth, innerHeight);
     drawV2Water(t);
   } else {
     _drawBackground(t);   // 背景图未就绪（如离线首帧）→ 回落原版渐变背景
@@ -2327,9 +2435,16 @@ const ZODIAC_IMGS = [];
 })();
 const _drawFish = drawFish;
 drawFish = function (f, t) {
+  if (!f) return _drawFish.apply(this, arguments);
+  /* M8：视口裁剪 —— 屏幕外的鱼直接跳过绘制（相机跟随 + 地图 1.95x~3.6x，
+     同屏外最多可能有 2/3 的鱼在白画） */
+  const M8_VM = 90;
+  const vx0 = cam.x - M8_VM, vx1 = cam.x + innerWidth + M8_VM;
+  const vy0 = cam.y - M8_VM, vy1 = cam.y + innerHeight + M8_VM;
+  if (f.x + f.r * 2 < vx0 || f.x - f.r * 2 > vx1 || f.y + f.r * 2 < vy0 || f.y - f.r * 2 > vy1) return;
   /* M3：生肖换装对象改为 tier 1（比蛋大一档的小型鱼）—— 体型「比蛋大一点点」；
      tier 3 恢复原版奶龙。每条鱼随机固定一只生肖，绘制布局与原版完全一致 */
-  if (f && f.tier === 1 && ZODIAC_IMGS.length && ZODIAC_IMGS[0].complete) {
+  if (f.tier === 1 && ZODIAC_IMGS.length && ZODIAC_IMGS[0].complete) {
     ctx.save(); ctx.translate(-cam.x, -cam.y);
     const r = f.r, y = f.y + Math.sin(t / 400 + f.wobble) * f.wobbleAmp * .15;
     const col = dangerColor(f);
@@ -2342,8 +2457,13 @@ drawFish = function (f, t) {
     ctx.save();
     ctx.translate(f.x, y); ctx.scale(f.dir, 1); ctx.rotate(Math.sin(t / 260 + f.wobble) * .08);
     const th = r * 2.7, tw = th * (img.naturalWidth || 1) / (img.naturalHeight || 1);
-    ctx.shadowColor = col; ctx.shadowBlur = 12 + r * .18;
-    if (img.complete && img.naturalWidth) ctx.drawImage(img, -tw / 2, -th * .52, tw, th);
+    /* M8：去掉逐鱼 shadowBlur（几十条鱼 × 每帧高斯模糊是最大掉帧源），
+       用一次廉价的半透明同色描边圈替代光晕观感 */
+    ctx.strokeStyle = col; ctx.globalAlpha = .28; ctx.lineWidth = Math.max(1.2, r * .12);
+    if (img.complete && img.naturalWidth) {
+      ctx.drawImage(img, -tw / 2, -th * .52, tw, th);
+      ctx.beginPath(); ctx.ellipse(0, -th * .1, tw * .46, th * .42, 0, 0, TAU); ctx.stroke();
+    }
     ctx.restore(); ctx.restore();
     return;
   }
@@ -2411,19 +2531,34 @@ function tailRGB(img) {
 function drawSealTail(t, p, m, bob) {
   const img = equippedImg();
   const [r0, g0, b0] = tailRGB(m ? img : null);
-  const wag = Math.sin(t / 190) * .6 + (V && V.dashT > 0 ? Math.sin(t / 60) * .3 : 0);   // 与摆尾同相位，冲刺时甩更快
+  /* M8：摆尾相位与身体 sway（t/190）完全同源 —— 尾巴和身体是一根弹簧，
+     不再各摆各的；冲刺时叠加高频甩动，二阶正弦让摆动有回弹感而非机械往复 */
+  const swayPh = Math.sin(t / 190);
+  const wag = swayPh * .6 + (V && V.dashT > 0 ? Math.sin(t / 60) * .3 : 0) + Math.sin(t / 95) * .08;
   const k = m ? (p.r * 2.35) / m.size : 0;
-  const ax = m ? -m.size * .30 * k : -p.r * .72;          // 尾根：身体后下缘之外（贴图后 30% 处）
+  /* M8：尾根扎进身体内部（贴图后 24% 处而非 30%）—— 根部被身体贴图压住，
+     接缝天然不可见；尾根加宽 1.35 倍，与身体后缘平滑融合 */
+  const ax = m ? -m.size * .24 * k : -p.r * .58;
   const ay = (m ? m.size * .34 * k : p.r * .70) + bob;
-  const len = (m ? m.size * .50 * k : p.r * 1.25);        // 尾长 ≈ 0.6 身位，确保伸出贴图外
-  const w = p.r * .24;                                     // 尾根半宽
+  const len = (m ? m.size * .50 * k : p.r * 1.25);
+  const w = p.r * .32;                                     // M8：尾根半宽 ×1.35
   ctx.save();
   ctx.translate(ax, ay);
-  ctx.rotate(.75 + wag * .45);                             // 整体朝后下方，随 wag 摆
-  const grad = ctx.createLinearGradient(0, 0, 0, len);
-  grad.addColorStop(0, 'rgb(' + r0 + ',' + g0 + ',' + b0 + ')');
-  grad.addColorStop(1, 'rgb(' + Math.max(0, r0 - 26) + ',' + Math.max(0, g0 - 26) + ',' + Math.max(0, b0 - 26) + ')');
-  ctx.fillStyle = grad;
+  ctx.rotate(.75 + wag * .45);
+  /* M8：渐变缓存 —— 颜色不变时复用同一渐变对象 */
+  const gk = r0 + ',' + g0 + ',' + b0;
+  if (M8_CACHE.tailGradKey !== gk) {
+    const grad = ctx.createLinearGradient(0, 0, 0, len);
+    grad.addColorStop(0, 'rgb(' + r0 + ',' + g0 + ',' + b0 + ')');
+    grad.addColorStop(1, 'rgb(' + Math.max(0, r0 - 26) + ',' + Math.max(0, g0 - 26) + ',' + Math.max(0, b0 - 26) + ')');
+    M8_CACHE.tailGrad = grad; M8_CACHE.tailGradKey = gk;
+  }
+  ctx.fillStyle = M8_CACHE.tailGrad;
+  /* M8：尾根关节盖片 —— 与身体同色的圆角楔形垫在尾根下，
+     把「贴图边缘 → 尾巴」的硬接缝变成同色过渡 */
+  ctx.fillStyle = 'rgb(' + r0 + ',' + g0 + ',' + b0 + ')';
+  ctx.beginPath(); ctx.ellipse(w * .2, -len * .04, w * 1.5, w * 1.15, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = M8_CACHE.tailGrad;
   ctx.beginPath();
   ctx.moveTo(-w, 0);
   ctx.quadraticCurveTo(-w * 1.25, len * .55, w * .1 + wag * w * .6, len);   // 外缘弧线到尾尖（尾尖随摆动横移）
@@ -2747,6 +2882,7 @@ function loopV2(now) {
   requestAnimationFrame(loopV2);
   dtFrame = Math.min(0.05, (now - lastV2) / 1000);
   lastV2 = now;
+  m8CapParts();                       /* M8：粒子上限，防技能连发时内存/绘制量失控 */
   if (state === 'playing') updateV2(dtFrame, now);
   else if (state === 'levelup' && player) {
     try {
@@ -3022,6 +3158,16 @@ updateShopCoin();
 (async function initCloud() {
   if (!CLOUD) return;
   try {
+    /* M8：微信授权回跳处理 —— URL 带 code+provider=wechat 时自动换取会话 */
+    try {
+      const q = new URLSearchParams(location.search);
+      if (q.get('code') && (q.get('provider') === 'wechat' || q.get('provider_id') === 'custom-oauth')) {
+        const r = await cloudTimeout(CLOUD.auth.handleWechatWebCallback(), 12000, 'wxcallback');
+        history.replaceState(null, '', location.pathname);   // 清掉回跳参数，刷新后不重放
+        if (r && r.error) toast('微信登录失败：' + (r.error.message || '授权换取失败'));
+        else { await refreshCloudUser(); renderLoginBadge(); toast('微信登录成功', true); }
+      }
+    } catch (e) { }
     await refreshCloudUser();
     renderLoginBadge();
   } catch (e) { }
