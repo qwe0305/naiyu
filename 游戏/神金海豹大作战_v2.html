@@ -441,8 +441,10 @@ const CSS = `
 #bossbar.on{opacity:1}
 #bossbar .nm{display:flex;justify-content:space-between;font-size:12px;color:#fff;text-shadow:0 1px 3px #000;margin-bottom:3px}
 #bossbar .nm .tag{color:#ffb3c1}
-#bossbar .bar{height:12px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);overflow:hidden}
+#bossbar .bar{position:relative;height:15px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);overflow:hidden}
 #bossbar .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff9d2e,#ff3b3b);transition:width .25s}
+#bossbar .bar .bnum{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:900;
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 4px rgba(0,0,0,.7);letter-spacing:.5px}
 #dashbtn{position:fixed;right:18px;bottom:26px;width:76px;height:76px;border-radius:50%;
   display:grid;place-items:center;line-height:1.15;text-align:center;z-index:7;cursor:pointer;
   background:radial-gradient(circle at 35% 30%,rgba(120,220,255,.45),rgba(6,40,61,.9));
@@ -502,9 +504,8 @@ html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavi
 @keyframes v2pop{from{transform:translateY(10px) scale(.92);opacity:0}}
 @keyframes v2fade{0%,72%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
 #shopBtn{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:12}
-/* ---- 血量移到左下角：避免与右上角设置按钮重叠 ---- */
-#lives{position:fixed;left:12px;bottom:26px;font-size:24px;letter-spacing:2px;z-index:6;
-  text-shadow:0 1px 4px rgba(0,0,0,.6)}
+/* ---- 血量移到左下角：M4 改为血条 —— 原版红心整块隐藏，由 #hpbox 接管 ---- */
+#lives{display:none !important}
 /* ---- 设置按钮（右上角齿轮，符合主流游戏惯例） ---- */
 #setBtn{position:fixed;top:10px;right:12px;width:38px;height:38px;border-radius:50%;z-index:15;cursor:pointer;
   display:grid;place-items:center;font-size:20px;color:#fff;
@@ -618,10 +619,13 @@ html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavi
 #hpbox .hptop{display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:#fff;
   text-shadow:0 1px 3px rgba(0,0,0,.7);margin-bottom:3px}
 #hpbox .hptop b{color:#ff5b6a}
-#hpbox .hpbar{height:14px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.3);
+#hpbox .hpbar{position:relative;height:16px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.3);
   overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 #hpbox .hpbar i{display:block;height:100%;width:100%;border-radius:99px;
   background:linear-gradient(90deg,#ff5b6a,#ff9d2e);transition:width .25s}
+/* 血条内嵌数字：白字 + 描边，保证任何血量色底都清晰 */
+#hpbox .hpnum{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:900;
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 4px rgba(0,0,0,.7);letter-spacing:.5px}
 #upbox{position:fixed;left:12px;bottom:52px;z-index:6;display:flex;gap:4px;pointer-events:none;flex-wrap:wrap;
   max-width:min(300px,60vw)}
 #upbox .upic{width:22px;height:22px;border-radius:6px;background:rgba(4,30,48,.6);
@@ -646,8 +650,9 @@ function toast(msg, gold) {
   setTimeout(() => d.remove(), 2500);
 }
 
-/* 扩展音效：复用原版 AudioContext，不干扰原版 beep */
-const SFX_VOL = .55;      // 合成音效统一音量系数（整体压小）
+/* 扩展音效：复用原版 AudioContext，不干扰原版 beep
+   音量系数恢复为 1（原先把整体压到 .55，导致扩展音效听起来"没声音"） */
+const SFX_VOL = 1;
 
 /* ---- 设置：全局音量 + 怪物生成速度乘区（独立于难度） --------------------- */
 const SETKEY = 'sealV2Set';
@@ -974,12 +979,18 @@ const UPGRADES = [
 let V = null;   // v2 局内状态
 let GAME_MODE = 'normal';   // 'normal' | 'endless'（普通 / 无尽）
 let CUR_DIFF = 'hard';      // 当前难度键 'easy' | 'hard' | 'hell'（无尽模式积分倍率用）
+/* M4：各难度初始血量（简单 100 / 困难 80 / 地狱 50） */
+const DIFF_HP = { easy: 100, hard: 80, hell: 50 };
+function diffStartHp() {
+  return DIFF_HP[CUR_DIFF] || 100;
+}
 function newV() {
+  const hp0 = diffStartHp();
   V = {
     lvl: 1, exp: 0, expNeed: 10, pendingLv: 0,
     up: { giant: 0, swift: 0, magnet: 0, devour: 0, combo: 0, charge: 0, harvest: 0 },
     coinsRun: 0, combo: 0, comboT: 0, maxCombo: 0,
-    hp: 100, maxHp: 100,          /* M4：血量制生命（原 lives 仍保留用于兼容原版 UI，恒为 1） */
+    hp: hp0, maxHp: hp0,          /* M4：血量制生命（难度决定上限：简单 100 / 困难 80 / 地狱 50） */
     dashT: 0, dashCd: 0, dashX: 1, dashY: 0,
     eatCount: 0,
     bosses: [], bossIdx: -1, bossDone: 0, trig: [false, false, false],
@@ -999,7 +1010,7 @@ const BOSS_DEFS = [
     sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 20, hp: 100, reward: 100, orbCoin: 30,
     line: '◆ 袋鼠 DJ 登场！吃掉它的 3 个音响！' },
   { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣包', orbIc: '◆', orbC: '#ff3b30',
-    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 10, hp: 150, reward: 200, orbCoin: 50,
+    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 20, hp: 150, reward: 200, orbCoin: 50,
     line: '◆ 魔芋爽辣王来了！吃掉它的 3 个辣包！' },
   { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '答案卷', orbIc: '■', orbC: '#4cc9f0',
     sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 10, hp: 200, reward: 300, orbCoin: 80,
@@ -1017,10 +1028,10 @@ const INTEGRAL_IMG = new Image();
 if (typeof V2_INTEGRAL_SRC === 'string' && V2_INTEGRAL_SRC) INTEGRAL_IMG.src = V2_INTEGRAL_SRC;
 const MATH3 = {
   beamCd: 6,          // 拉人技能冷却（秒）
-  beamDur: 2.2,       // 拉拽持续时长
-  beamSpeed: 340,     // 拉拽速度（px/s）
+  beamDur: 4.2,       // 拉拽持续时长（放慢速度后拉得更久，多扣血）
+  beamSpeed: 150,     // 拉拽速度（px/s，放慢 → 拉拽时间更长，每秒扣血累计更多）
   beamDps: 5,         // 拉拽期间每秒扣血
-  beamRange: 900,     // 拉人触发距离（玩家在 Boss 这个距离内才拉）
+  beamRange: 1100,    // 拉人触发距离（玩家在 Boss 这个距离内才拉）
   pullStop: 150,      // 拉到距离 Boss 这么近停住（"课本"范围）
   danmakuCd: 1.6,     // 弹幕波次间隔
   danmakuDmg: 10,     // 每个积分号伤害
@@ -1074,7 +1085,7 @@ hud2.innerHTML =
 document.body.appendChild(hud2);
 const bossbar = el('div', 'bossbar');
 bossbar.innerHTML = '<div class="nm"><span id="bbname">Boss</span><span class="tag" id="bbtag">剩 3 / 3</span></div>' +
-  '<div class="bar"><i id="bbfill"></i></div>';
+  '<div class="bar"><i id="bbfill"></i><span class="bnum" id="bbnum">100 / 100</span></div>';
 document.body.appendChild(bossbar);
 const dashbtn = el('div', 'dashbtn', null, '<div style="display:grid;place-items:center"><b>冲刺</b><span>双击屏幕</span></div>');
 document.body.appendChild(dashbtn);
@@ -1082,7 +1093,7 @@ document.body.appendChild(el('div', 'v2toast'));
 /* M4：玩家血条 + 进化技能栏（左下角） */
 const hpbox = el('div', 'hpbox');
 hpbox.innerHTML = '<div class="hptop"><span>生命</span><b id="hpnum">100 / 100</b></div>' +
-  '<div class="hpbar"><i id="hpfill"></i></div>';
+  '<div class="hpbar"><i id="hpfill"></i><span class="hpnum" id="hpnum2">100 / 100</span></div>';
 document.body.appendChild(hpbox);
 const upbox = el('div', 'upbox');
 document.body.appendChild(upbox);
@@ -1670,12 +1681,13 @@ function updateBoss(dt) {
   for (const B of V.bosses) updateBossOne(B, dt);
   // 弹幕（全局，与单个 Boss 无关，但原逻辑放在 updateBoss 里，这里独立处理一次）
   updateBullets(dt);
-  /* M4：Boss 血条同步（血量最低者） */
+  /* M4：Boss 血条同步（血量最低者）+ 条内及时数字 */
   let low = V.bosses[0];
   for (const b of V.bosses) if (b.hp / b.maxHp < low.hp / low.maxHp) low = b;
   document.getElementById('bbfill').style.width = (low.hp / low.maxHp * 100).toFixed(1) + '%';
-  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length +
-    ' · ' + Math.ceil(low.hp) + '/' + low.maxHp;
+  const bn = document.getElementById('bbnum');
+  if (bn) bn.textContent = Math.ceil(low.hp) + ' / ' + low.maxHp;
+  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
 }
 function updateBossOne(B, dt) {
   const D = B.def;
@@ -2054,23 +2066,23 @@ updateHud = function () {
   return r;
 };
 
-/* 原版吃鱼音效音量偏大（原值 0.9），这里调小，让 Boss 出场音更突出；并叠加全局音量
-   M3：原版最多 5 个笑声叠播太吵 —— 限流为最多同时 2 个 + 最小间隔 130ms */
-const EAT_VOLUME = .22;
+/* 原版吃鱼音效音量恢复为原值 0.9（只保留「最多同时 2 个 + 最小间隔 130ms」的防重叠限流，
+   不再额外压小音量 —— 之前的 .22 会让原版笑声几乎听不见） */
+const EAT_VOLUME = .9;
 let _lastEatAt = 0;
 const _playEat = playEat;
 playEat = function () {
   if (GAME_VOL <= 0) return;               // 静音时不播
   const nowMs = performance.now();
   if (nowMs - _lastEatAt < 130) return;    // 间隔太短直接跳过
-  while (eatVoices.length >= 2) { const v = eatVoices.shift(); try { v.pause(); } catch (e) { } }
+  while (eatVoices.length >= 3) { const v = eatVoices.shift(); try { v.pause(); } catch (e) { } }
   _lastEatAt = nowMs;
   _playEat.apply(this, arguments);
   const a = eatVoices[eatVoices.length - 1];
-  if (a) a.volume = EAT_VOLUME * GAME_VOL;
+  if (a) a.volume = Math.min(1, EAT_VOLUME * GAME_VOL);
 };
 
-/* 原版 beep（死亡 / 胜利）音量偏大，这里换成低音量版本（逻辑与原版一致，只压小音量），并叠加全局音量 */
+/* 原版 beep（死亡 / 胜利）音量恢复为原值 0.22（不再压到 0.13），只叠加全局音量 */
 beep = function (type) {
   try {
     if (GAME_VOL <= 0) return;
@@ -2082,7 +2094,7 @@ beep = function (type) {
       o.type = 'sawtooth';
       o.frequency.setValueAtTime(220, now);
       o.frequency.exponentialRampToValueAtTime(55, now + 0.35);
-      g.gain.setValueAtTime(0.13 * GAME_VOL, now);
+      g.gain.setValueAtTime(0.22 * GAME_VOL, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
       o.start(now); o.stop(now + 0.42);
     } else {
@@ -2090,7 +2102,7 @@ beep = function (type) {
       o.frequency.setValueAtTime(520, now);
       o.frequency.setValueAtTime(660, now + 0.12);
       o.frequency.setValueAtTime(880, now + 0.26);
-      g.gain.setValueAtTime(0.13 * GAME_VOL, now);
+      g.gain.setValueAtTime(0.22 * GAME_VOL, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
       o.start(now); o.stop(now + 0.65);
     }
@@ -2596,7 +2608,19 @@ function drawBossLayer(t) {
 
 // 重置 / 结算
 const _reset = reset;
-reset = function () { _reset.apply(this, arguments); newV(); V.prevLives = lives; bossbar.classList.remove('on'); lvov.classList.add('hidden'); hpbox.classList.remove('on'); upbox.innerHTML = ''; };
+reset = function () {
+  /* M4：reset 时 cfg 已是新难度（原版 reset 会读 cfg），据此确定血量上限 */
+  try {
+    if (typeof DIFFS !== 'undefined' && DIFFS) {
+      for (const k in DIFFS) if (DIFFS[k] === cfg) { CUR_DIFF = k; break; }
+    }
+  } catch (e) { }
+  _reset.apply(this, arguments);
+  newV();
+  V.prevLives = lives;
+  bossbar.classList.remove('on'); lvov.classList.add('hidden');
+  hpbox.classList.remove('on'); upbox.innerHTML = '';
+};
 const _endGame = endGame;
 endGame = function (win) {
   hpbox.classList.remove('on');   /* M4：结算时隐藏血条 */
@@ -2633,7 +2657,25 @@ endGame = function (win) {
   } catch (e) { }
 };
 const _start = start;
-start = function () { _start.apply(this, arguments); lastV2 = performance.now(); if (V) { V.surviveT = performance.now(); hpbox.classList.add('on'); } };
+start = function () {
+  /* M4：原版难度按钮直接改 cfg 再 start()，不经过扩展层面板 ——
+     这里反查 cfg 对应的难度键，保证血量上限/积分倍率随难度正确 */
+  try {
+    if (typeof DIFFS !== 'undefined' && DIFFS) {
+      for (const k in DIFFS) if (DIFFS[k] === cfg) { CUR_DIFF = k; break; }
+    }
+  } catch (e) { }
+  _start.apply(this, arguments);
+  lastV2 = performance.now();
+  /* M4：血量按难度重置（原版 reset 可能在 start 之前/之后调用，这里再兜一次） */
+  if (V) {
+    const hp0 = diffStartHp();
+    V.maxHp = hp0;
+    if (!(V.hp > 0) || V.hp > hp0) V.hp = hp0;
+    V.surviveT = performance.now();
+    hpbox.classList.add('on');
+  }
+};
 
 function updateShopCoin() {
   const e = document.getElementById('v2coin'); if (e) e.textContent = fmt(S.coins + (V ? V.coinsRun : 0));
@@ -2871,8 +2913,9 @@ function updateHUD2() {
   const hf = document.getElementById('hpfill');
   if (hf) {
     hf.style.width = (V.hp / V.maxHp * 100) + '%';
-    const num = document.getElementById('hpnum');
-    if (num) num.textContent = Math.ceil(V.hp) + ' / ' + V.maxHp;
+    const txt = Math.ceil(V.hp) + ' / ' + V.maxHp;
+    const num = document.getElementById('hpnum'); if (num) num.textContent = txt;
+    const num2 = document.getElementById('hpnum2'); if (num2) num2.textContent = txt;
   }
   const ub = document.getElementById('upbox');
   if (ub) {
