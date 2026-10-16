@@ -1140,10 +1140,10 @@ const BOSS_DEFS = [
   { key: 'dj', name: '袋鼠 DJ', sub: '音响三兄弟', orb: '音响', orbIc: '♪', orbC: '#ff4d6d',
     sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 20, hp: 100, reward: 100, orbCoin: 30,
     line: '◆ 袋鼠 DJ 登场！吃掉它的 3 个音响！' },
-  { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣包', orbIc: '◆', orbC: '#ff3b30',
+  { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣条', orbIc: '🌶', orbC: '#ff3b30',
     sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 10, hp: 150, reward: 200, orbCoin: 50,
     line: '◆ 魔芋爽辣王来了！用旋转水波打掉它的 150 血！' },
-  { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '答案卷', orbIc: '■', orbC: '#4cc9f0',
+  { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '课本', orbIc: '📖', orbC: '#4cc9f0',
     sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 10, hp: 200, reward: 300, orbCoin: 80,
     line: '◆ 高数压轴登场！小心它的函数引力线！撞掉它的 200 血！' }
 ];
@@ -1813,6 +1813,17 @@ function m6ClearScreen() {
   V.bullets.length = 0;
   V.waves.length = 0;
   V.curves.length = 0;
+  /* M9：视野内的 Boss 也一并清掉 —— 直接血量清零走 defeatBoss 正常结算；
+     屏幕外的 Boss 保留，追上去再清 */
+  let bossKilled = 0;
+  const vx0 = cam.x - 60, vx1 = cam.x + innerWidth + 60;
+  const vy0 = cam.y - 60, vy1 = cam.y + innerHeight + 60;
+  for (const B of V.bosses.slice()) {
+    if (B.x + B.r > vx0 && B.x - B.r < vx1 && B.y + B.r > vy0 && B.y - B.r < vy1) {
+      damageBoss(B, B.hp + 1, 'clear');
+      bossKilled++;
+    }
+  }
   /* 3) 视觉与音效：扩散冲击环 + 白闪 + 迸散粒子 */
   V.m6ClearT = 1.0;
   V.m6ClearR = Math.max(W, H) * 1.25;
@@ -1831,7 +1842,7 @@ function m6ClearScreen() {
       c: i % 3 === 0 ? '#ffffff' : (i % 3 === 1 ? '#ffe9a8' : '#9fd8ff')
     });
   }
-  toast('✧ wjh 清屏！清掉 ' + cleared + ' 只生物，冷却 60 秒', true);
+  toast('✧ wjh 清屏！清掉 ' + cleared + ' 只生物' + (bossKilled ? ' · 清掉 ' + bossKilled + ' 个视野内 Boss' : '') + '，冷却 60 秒', true);
 }
 
 /* M6 状态推进：道具动画计时 / 缩小恢复 / 弹丸飞行与命中 */
@@ -2192,10 +2203,17 @@ function spawnBoss(i) {
     r: def.r, atk: 2, hitT: 0,
     hp: def.hp, maxHp: def.hp,          /* M4：Boss 血量 */
     beam: null, beamStop: 0, danT: 0,   /* M4：Boss3 拉人 / 弹幕状态 */
-    /* M4：核心方块只有 Boss1(DJ) 保留（吃外卖击败）；Boss2/3 无方块，纯血量击败 */
+    /* M9：方块系统全员回归 —— Boss1 三个外卖（吃完=击败）；
+       Boss2 四个辣条方块 / Boss3 五个课本方块（全部吃完 → 扣掉 Boss 当前一半血量，方块稍后重生） */
     orbs: def.key === 'dj'
       ? [0, 1, 2].map(k => ({ alive: true, state: 'guarded', cyc: 2.6 + k * 1.3, r: 19,
           ang: k * TAU / 3, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+      : def.key === 'moyu'
+      ? [0, 1, 2, 3].map(k => ({ alive: true, state: 'guarded', cyc: 2.8 + k * 1.2, r: 18,
+          ang: k * TAU / 4, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+      : def.key === 'math'
+      ? [0, 1, 2, 3, 4].map(k => ({ alive: true, state: 'guarded', cyc: 3 + k * 1.1, r: 18,
+          ang: k * TAU / 5, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
       : []
   };
   V.bosses.push(boss);
@@ -2232,17 +2250,18 @@ function updateBossOne(B, dt) {
   B.x = clamp(B.x, -B.r * .4, W + B.r * .4);
   B.y = clamp(B.y, B.r * .5, H - B.r * .5);
 
-  // 核心物环绕
+  // 核心物环绕（M9：按方块数量均分圆周，不再写死 3 个）
   B.orbs.forEach((o, k) => {
     if (!o.alive) return;
+    const orbN = B.orbs.length || 1;
     o.ang += dt * (0.8 + B.ph * 0.12);
     const base = B.r * 0.95 + 30;
-    const gx = B.x + Math.cos(o.ang + k * TAU / 3) * base;
-    const gy = B.y + Math.sin(o.ang + k * TAU / 3) * base;
+    const gx = B.x + Math.cos(o.ang + k * TAU / orbN) * base;
+    const gy = B.y + Math.sin(o.ang + k * TAU / orbN) * base;
     let ox = gx, oy = gy;
     if (o.state === 'open') {
-      ox = B.x + Math.cos(o.ang + k * TAU / 3) * (base + 34);
-      oy = B.y + Math.sin(o.ang + k * TAU / 3) * (base + 26);
+      ox = B.x + Math.cos(o.ang + k * TAU / orbN) * (base + 34);
+      oy = B.y + Math.sin(o.ang + k * TAU / orbN) * (base + 26);
     }
     o.x += (ox - o.x) * Math.min(1, dt * 4);
     o.y += (oy - o.y) * Math.min(1, dt * 4);
@@ -2258,6 +2277,21 @@ function updateBossOne(B, dt) {
       else hitPlayer(D.orbDmg || D.dmg, true);
     }
   });
+
+  /* M9：Boss2/3 方块全部吃完 → 结算已触发（见 eatOrb），这里负责 10 秒后重生方块，
+     让「吃完减半血」可以反复触发 */
+  if ((D.key === 'moyu' || D.key === 'math') && B.orbs.length) {
+    if (B.orbs.every(o => !o.alive)) {
+      if (B.orbRespawnAt === undefined) B.orbRespawnAt = B.t + 10;
+      else if (B.t >= B.orbRespawnAt) {
+        B.orbRespawnAt = undefined;
+        const n = B.orbs.length;
+        B.orbs.forEach((o, k) => { o.alive = true; o.state = 'guarded'; o.cyc = 2.8 + k * 1.1; });
+        toast('◆ ' + D.name + ' 召回了新的' + D.orb + '！', true);
+        sfx(500, .2, 'square', .08, 200);
+      }
+    }
+  }
 
   // 攻击
   if (D.key !== 'math') {
@@ -2432,19 +2466,36 @@ function eatOrb(o, B) {
   const D = B.def;
   o.alive = false;
   B.ph = Math.min(3, B.ph + 1);
-  /* M4：Boss1 特例 —— 吃掉全部 3 个外卖（音响）即直接击败，也可以靠撞击扣血打死 */
-  B.hp = Math.max(0, B.hp - Math.round(B.maxHp / 3));
-  B.hitT = .4;
   const gain = Math.round(D.orbCoin * coinMul());
   V.coinsRun += gain;
   player.r = Math.min(cfg.winSize * 1.05, player.r * 1.06);
   V.orbsEaten = (V.orbsEaten || 0) + 1;
   score += Math.round(D.orbCoin / 3);          // 分数/成长仍用原始值，不受积分倍率影响
   updateHud();
-  toast('◆ 吃掉' + D.orb + '！积分 +' + gain, true);
   sfx(240, .3, 'sawtooth', .1, 90);
   for (let q = 0; q < 26; q++) V.parts.push({ x: o.x, y: o.y, vx: rnd(-260, 260), vy: rnd(-260, 260), r: rnd(3, 9), life: rnd(.4, .8), c: '#ffd54a' });
-  /* 血量归零（吃 3 个外卖刚好扣光）→ 击败；DJ 仍保留「吃完外卖」这条捷径 */
+
+  if (D.key === 'dj') {
+    /* Boss1 特例：每个外卖扣 1/3 最大血量，吃满 3 个直接击败 */
+    B.hp = Math.max(0, B.hp - Math.round(B.maxHp / 3));
+    B.hitT = .4;
+    toast('◆ 吃掉' + D.orb + '！积分 +' + gain, true);
+  } else {
+    /* M9：Boss2/3 —— 单个方块不扣血；全部吃完 → 扣掉 Boss 当前血量的一半，方块稍后重生 */
+    const allGone = B.orbs.every(x => !x.alive);
+    if (allGone) {
+      const cut = Math.max(1, Math.ceil(B.hp / 2));
+      B.hp = Math.max(0, B.hp - cut);
+      B.hitT = .5;
+      B.orbRespawnAt = B.t + 10;
+      toast('◆ ' + D.orb + '全部吃完！' + D.name + ' 血量 -' + cut + '（当前 ' + B.hp + '/' + B.maxHp + '）', true);
+      beep('win');
+      for (let q = 0; q < 40; q++) V.parts.push({ x: B.x + rnd(-B.r * .5, B.r * .5), y: B.y + rnd(-B.r * .5, B.r * .5), vx: rnd(-320, 320), vy: rnd(-320, 320), r: rnd(3, 9), life: rnd(.4, .9), c: D.orbC });
+    } else {
+      toast('◆ 吃掉' + D.orb + '！积分 +' + gain + '（集齐可重创 ' + D.name + '）', true);
+    }
+  }
+  /* 血量归零 → 击败 */
   if (B.hp <= 0) defeatBoss(B);
 }
 
@@ -2625,16 +2676,16 @@ updateHud = function () {
   return r;
 };
 
-/* 原版吃鱼音效音量恢复为原值 0.9（只保留「最多同时 2 个 + 最小间隔 130ms」的防重叠限流，
-   不再额外压小音量 —— 之前的 .22 会让原版笑声几乎听不见） */
+/* 原版吃鱼音效音量 0.9。M9：用户反馈笑声重叠太吵 ——
+   收紧为「最多同时 1 个 + 最小间隔 500ms」，上一声没放完绝不叠新声 */
 const EAT_VOLUME = .9;
 let _lastEatAt = 0;
 const _playEat = playEat;
 playEat = function () {
   if (GAME_VOL <= 0) return;               // 静音时不播
   const nowMs = performance.now();
-  if (nowMs - _lastEatAt < 130) return;    // 间隔太短直接跳过
-  while (eatVoices.length >= 3) { const v = eatVoices.shift(); try { v.pause(); } catch (e) { } }
+  if (nowMs - _lastEatAt < 500) return;    // M9：间隔 130ms → 500ms
+  while (eatVoices.length >= 1) { const v = eatVoices.shift(); try { v.pause(); } catch (e) { } }   // M9：最多 1 个
   _lastEatAt = nowMs;
   _playEat.apply(this, arguments);
   const a = eatVoices[eatVoices.length - 1];
@@ -2878,13 +2929,11 @@ drawFish = function (f, t) {
     ctx.save();
     ctx.translate(f.x, y); ctx.scale(f.dir, 1); ctx.rotate(Math.sin(t / 260 + f.wobble) * .08);
     const th = r * 2.7, tw = th * (img.naturalWidth || 1) / (img.naturalHeight || 1);
-    /* M8：去掉逐鱼 shadowBlur（几十条鱼 × 每帧高斯模糊是最大掉帧源），
-       用一次廉价的半透明同色描边圈替代光晕观感 */
+    /* M9 修复：M8 误把 globalAlpha .28 作用到了整张贴图上导致鱼变半透明。
+       现在贴图全色绘制，仅危险色描边圈降透明度 */
+    if (img.complete && img.naturalWidth) ctx.drawImage(img, -tw / 2, -th * .52, tw, th);
     ctx.strokeStyle = col; ctx.globalAlpha = .28; ctx.lineWidth = Math.max(1.2, r * .12);
-    if (img.complete && img.naturalWidth) {
-      ctx.drawImage(img, -tw / 2, -th * .52, tw, th);
-      ctx.beginPath(); ctx.ellipse(0, -th * .1, tw * .46, th * .42, 0, 0, TAU); ctx.stroke();
-    }
+    ctx.beginPath(); ctx.ellipse(0, -th * .1, tw * .46, th * .42, 0, 0, TAU); ctx.stroke();
     ctx.restore(); ctx.restore();
     return;
   }
@@ -3142,6 +3191,14 @@ function drawBossLayer(t) {
         ctx.globalAlpha = open ? 1 : .94;
         if (open) { ctx.shadowColor = '#6ee7a0'; ctx.shadowBlur = 22; }
         ctx.drawImage(ORB_IMG, -iw / 2, -sr * 2.02 - ih / 2, iw, ih);
+        ctx.restore();
+      } else if (D.key === 'moyu' && LATIAO_IMG.complete && LATIAO_IMG.naturalWidth) {
+        /* Boss2 辣条方块：用辣条贴图（复用辣条子弹素材） */
+        const ih = sr * 2.1, iw = ih * (LATIAO_IMG.naturalWidth / LATIAO_IMG.naturalHeight);
+        ctx.save();
+        ctx.globalAlpha = open ? 1 : .94;
+        if (open) { ctx.shadowColor = '#6ee7a0'; ctx.shadowBlur = 22; }
+        ctx.drawImage(LATIAO_IMG, -iw / 2, -sr * 2.02 - ih / 2, iw, ih);
         ctx.restore();
       } else {
         ctx.font = sr * 1.05 + 'px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -3605,7 +3662,7 @@ window.__v2 = {
   M6_SKILLS, get m6Shots() { return V ? V.m6Shots : []; },
   get fishCount() { return (typeof fishes !== 'undefined' && fishes) ? fishes.length : -1; },
   get clearCd() { return V ? (V.clearCd || 0) : 0; },
-  m6StartSkill, m6ClearScreen, tryDashCore,
+  m6StartSkill, m6ClearScreen, tryDashCore, eatOrb,
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
   get cloudUser() { return cloudUser; },
