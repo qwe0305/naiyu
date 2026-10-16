@@ -626,7 +626,9 @@ function newV() {
     hurtFlash: 0, surviveT: 0,
     /* M6：皮肤专属技能状态（道具动画 / 护盾 / 缩小 / 气泡 / 弹丸） */
     m6Item: null, m6Shield: 0, m6ShieldFx: 0, m6ShrinkT: 0, m6BubbleT: 0,
-    m6Shots: [], m6MinR: 26, m6PreR: 26
+    m6Shots: [], m6MinR: 26, m6PreR: 26,
+    m6ClearT: 0, m6ClearR: 0,  /* M7：wjh 清屏冲击环剩余时间 / 半径 */
+    clearCd: 0                 /* M7：清屏独立冷却（60 秒） */
   };
 }
 newV();
@@ -1204,7 +1206,8 @@ const M6_SKILLS = {
   xiandaishuxue: { kind: 'shrink',                                        btn: '变小' },
   jiahao:        { kind: 'shoot', dmg: 15, item: 'gun',    snd: 'gun',   btn: '射击' },
   naiyu:         { kind: 'shoot', dmg: 20, item: 'fork',   snd: 'gun',   btn: '叉击' },
-  xiangjiao:     { kind: 'shoot', dmg: 25, item: 'banana', snd: 'throw', btn: '扔香蕉' }
+  xiangjiao:     { kind: 'shoot', dmg: 25, item: 'banana', snd: 'throw', btn: '扔香蕉' },
+  wjh:           { kind: 'clear',                                        btn: '清屏' }
 };
 
 /* M6 音效合成（WebAudio 现场合成，无需外链素材）：
@@ -1242,6 +1245,13 @@ function m6StartSkill() {
   if (V.dashCd > 0) return;
   if (skl.kind === 'shield' && V.m6Shield > 0) { toast('🛡 薯片护盾已在生效中', true); return; }
   if (skl.kind === 'shrink' && V.m6ShrinkT > 0) { toast('已经够小了……', true); return; }
+  /* M7：清屏技能走独立 60 秒冷却（V.clearCd），其余技能沿用冲刺冷却 */
+  if (skl.kind === 'clear') {
+    if ((V.clearCd || 0) > 0) return;
+    V.clearCd = CLEAR_CD;
+    m6ClearScreen();
+    return;
+  }
   V.dashCd = Math.max(4, 10 - V.up.charge * 2);
   if (skl.kind === 'heal') {
     V.m6Item = { id: skl.item, t: .9, dur: .9, heal: skl.heal };
@@ -1261,7 +1271,7 @@ function m6StartSkill() {
     invincibleUntil = performance.now() + 10000;
     sfx(880, .3, 'sine', .12, 220);
     toast('✦ 金身无敌 10 秒！趁机苟住', true);
-  } else if (skl.kind === 'shoot') {
+  } else   if (skl.kind === 'shoot') {
     playM6Snd(skl.snd);
     V.m6Item = { id: skl.item, t: .7, dur: .7, shoot: true };
     let tx = null, ty = null, best = 1e9;
@@ -1276,15 +1286,60 @@ function m6StartSkill() {
     const m = Math.hypot(dx, dy) || 1;
     V.m6Shots.push({ x: player.x, y: player.y, vx: dx / m * 620, vy: dy / m * 620,
       dmg: skl.dmg, life: 2.2, item: skl.item, rot: Math.atan2(dy, dx) });
+  } else if (skl.kind === 'clear') {
+    m6ClearScreen();
   }
 }
 function tryDash() { m6StartSkill(); }
+
+/* ============================================================ M7 wjh 皮肤专属技能：清屏
+   效果：瞬间抹掉当前页面里的所有生物（地图上的鱼群），并清空场上弹幕/音浪/函数线。
+   注意：不清 Boss —— Boss 保留，需正常打到血量为 0 才能击败。
+   视觉：以玩家为中心扩散的白金色冲击环 + 白闪 + 大量迸散粒子。
+   冷却 60 秒（独立冷却，与原版冲刺不再共用）。 */
+const CLEAR_CD = 60;                 // M7：清屏冷却 60 秒
+function m6ClearScreen() {
+  if (state !== 'playing' || !V || !player) return;
+  /* 1) 清掉当前页面上的所有生物（鱼群） */
+  let cleared = 0;
+  try {
+    if (typeof fishes !== 'undefined' && fishes && fishes.length) {
+      cleared = fishes.length;
+      fishes.length = 0;
+    }
+  } catch (e) { }
+  /* 2) 场上敌对弹幕/音浪/曲线也一并抹掉（属于"当前页面"的骚扰物） */
+  V.bullets.length = 0;
+  V.waves.length = 0;
+  V.curves.length = 0;
+  /* 3) 视觉与音效：扩散冲击环 + 白闪 + 迸散粒子 */
+  V.m6ClearT = 1.0;
+  V.m6ClearR = Math.max(W, H) * 1.25;
+  V.hurtFlash = Math.max(V.hurtFlash || 0, .35);
+  try {
+    sfx(160, .35, 'sawtooth', .18, 2400);
+    setTimeout(() => { try { sfx(980, .25, 'sine', .12, 120); } catch (e) { } }, 120);
+    playNoise(.3, .35, 6000);
+  } catch (e) { }
+  for (let i = 0; i < 90; i++) {
+    const a = Math.random() * TAU, sp = rnd(220, 900);
+    V.parts.push({
+      x: player.x, y: player.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      r: rnd(2, 7), life: rnd(.45, .95),
+      c: i % 3 === 0 ? '#ffffff' : (i % 3 === 1 ? '#ffe9a8' : '#9fd8ff')
+    });
+  }
+  toast('✧ wjh 清屏！清掉 ' + cleared + ' 只生物，冷却 60 秒', true);
+}
 
 /* M6 状态推进：道具动画计时 / 缩小恢复 / 弹丸飞行与命中 */
 function updateM6(dt) {
   if (V.m6Item) { V.m6Item.t -= dt; if (V.m6Item.t <= 0) V.m6Item = null; }
   if (V.m6ShieldFx > 0) V.m6ShieldFx -= dt;
   if (V.m6BubbleT > 0) V.m6BubbleT -= dt;
+  if (V.m6ClearT > 0) V.m6ClearT -= dt;   /* M7：wjh 清屏冲击环 */
+  if (V.clearCd > 0) V.clearCd -= dt;     /* M7：清屏独立冷却 60 秒 */
   if (V.m6ShrinkT > 0) {
     V.m6ShrinkT -= dt;
     if (V.m6ShrinkT <= 0) {
@@ -1362,6 +1417,35 @@ function drawM6World(t) {
     const a = V.m6Item.hold || pr < .8 ? 1 : (1 - pr) * 5;
     const rot = V.m6Item.shoot ? -.35 : Math.sin(t / 160) * .1;
     drawSpr(V.m6Item.id, p.x + p.r * .8, p.y - p.r * .2 - rise + Math.sin(t / 250) * 2, sz, rot, a);
+  }
+  /* M7：wjh 清屏冲击环 —— 以玩家为中心向外扩散的金白双环 */
+  if (V.m6ClearT > 0) {
+    const pr = 1 - V.m6ClearT / 1.0;                 // 0 → 1
+    const ease = 1 - Math.pow(1 - pr, 2.2);
+    const rad = ease * (V.m6ClearR || Math.max(W, H) * 1.25);
+    const fade = Math.max(0, 1 - pr * 1.1);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    /* 外环：金 */
+    ctx.globalAlpha = fade * .9;
+    ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = 10 * fade + 2;
+    ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 26;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, TAU); ctx.stroke();
+    /* 内环：白，滞后一点 */
+    const rad2 = rad * .82;
+    ctx.globalAlpha = Math.max(0, fade - .12) * .85;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * fade + 1;
+    ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad2, 0, TAU); ctx.stroke();
+    /* 中心余晖 */
+    const cg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 3.4);
+    cg.addColorStop(0, 'rgba(255,255,255,' + (fade * .55) + ')');
+    cg.addColorStop(1, 'rgba(255,235,170,0)');
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 3.4, 0, TAU); ctx.fill();
+    ctx.restore();
   }
   /* 飞行弹丸 */
   for (const s of V.m6Shots) drawSpr(s.item, s.x, s.y, p.r * .9, s.rot, 1);
@@ -2915,7 +2999,12 @@ function updateHUD2() {
   if (db) {
     /* M6：皮肤专属技能按钮文案（无技能皮肤保持「冲刺」） */
     const skl = M6_SKILLS[S.equipped];
-    if (V.dashCd > 0) { db.classList.add('cd'); db.querySelector('b').textContent = V.dashCd.toFixed(1); }
+    /* M7：清屏技能显示独立 60 秒冷却 */
+    if (skl && skl.kind === 'clear') {
+      if ((V.clearCd || 0) > 0) { db.classList.add('cd'); db.querySelector('b').textContent = Math.ceil(V.clearCd); }
+      else { db.classList.remove('cd'); db.querySelector('b').textContent = skl.btn; }
+    }
+    else if (V.dashCd > 0) { db.classList.add('cd'); db.querySelector('b').textContent = V.dashCd.toFixed(1); }
     else { db.classList.remove('cd'); db.querySelector('b').textContent = skl ? skl.btn : '冲刺'; }
   }
   /* M5：旋转水波技能按钮冷却 */
@@ -2947,6 +3036,9 @@ window.__v2 = {
   get invincibleUntil() { return invincibleUntil; },
   __forceInvuln(ms) { invincibleUntil = performance.now() + ms; },
   M6_SKILLS, get m6Shots() { return V ? V.m6Shots : []; },
+  get fishCount() { return (typeof fishes !== 'undefined' && fishes) ? fishes.length : -1; },
+  get clearCd() { return V ? (V.clearCd || 0) : 0; },
+  m6StartSkill, m6ClearScreen, tryDashCore,
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
   get cloudUser() { return cloudUser; },
