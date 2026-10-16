@@ -594,9 +594,10 @@ const UPGRADES = [
   { id: 'magnet', ic: '◎', name: '吸星',     d: '附近小鱼自动被吸过来' },
   { id: 'devour', ic: '▲', name: '暴食',     d: '能吃掉更大的奶龙' },
   { id: 'combo',  ic: '✦', name: '连击大师', d: '吃鱼积分 ×2 / ×3 / ×4' },
-  { id: 'vigor',  ic: '✚', name: '铁壁',     d: '生命立刻回满 + 5 秒无敌' },
-  { id: 'charge', ic: '↻', name: '闪充',     d: '冲刺冷却 −2 秒' },
-  { id: 'harvest', ic: '✳', name: '丰收',    d: '每次吃鱼额外 +1 经验' }
+  { id: 'vigor',  ic: '✚', name: '疗愈',     d: '立刻回复 20 滴血 + 3 秒无敌' },
+  { id: 'charge', ic: '↻', name: '闪充',     d: '技能冷却 −2 秒' },
+  { id: 'harvest', ic: '✳', name: '丰收',    d: '每次吃鱼额外 +1 经验' },
+  { id: 'wave',   ic: '〜', name: '水波强化', d: '水波每次伤害 +5 滴' }
 ];
 
 let V = null;   // v2 局内状态
@@ -611,7 +612,7 @@ function newV() {
   const hp0 = diffStartHp();
   V = {
     lvl: 1, exp: 0, expNeed: 10, pendingLv: 0,
-    up: { giant: 0, swift: 0, magnet: 0, devour: 0, combo: 0, charge: 0, harvest: 0 },
+    up: { giant: 0, swift: 0, magnet: 0, devour: 0, combo: 0, charge: 0, harvest: 0, wave: 0 },
     coinsRun: 0, combo: 0, comboT: 0, maxCombo: 0,
     hp: hp0, maxHp: hp0,          /* M4：血量制生命（M5c 统一 100 滴） */
     dashT: 0, dashCd: 0, dashX: 1, dashY: 0,
@@ -624,7 +625,7 @@ function newV() {
     prevScore: 0, prevLives: (typeof lives === 'number' ? lives : 3),
     hurtFlash: 0, surviveT: 0,
     /* M6：皮肤专属技能状态（道具动画 / 护盾 / 缩小 / 气泡 / 弹丸） */
-    m6Item: null, m6Shield: false, m6ShieldFx: 0, m6ShrinkT: 0, m6BubbleT: 0,
+    m6Item: null, m6Shield: 0, m6ShieldFx: 0, m6ShrinkT: 0, m6BubbleT: 0,
     m6Shots: [], m6MinR: 26, m6PreR: 26
   };
 }
@@ -712,7 +713,7 @@ const bossbar = el('div', 'bossbar');
 bossbar.innerHTML = '<div class="nm"><span id="bbname">Boss</span><span class="tag" id="bbtag">剩 3 / 3</span></div>' +
   '<div class="bar"><i id="bbfill"></i><span class="bnum" id="bbnum">100 / 100</span></div>';
 document.body.appendChild(bossbar);
-const dashbtn = el('div', 'dashbtn', null, '<div style="display:grid;place-items:center"><b>冲刺</b><span>双击屏幕</span></div>');
+const dashbtn = el('div', 'dashbtn', null, '<div style="display:grid;place-items:center"><b>冲刺</b><span>双击/点此</span></div>');
 document.body.appendChild(dashbtn);
 document.body.appendChild(el('div', 'v2toast'));
 /* M4：玩家血条 + 进化技能栏（左下角） */
@@ -1201,9 +1202,9 @@ const M6_SKILLS = {
   binghongcha:   { kind: 'heal',  heal: 20, item: 'icetea', snd: 'drink', btn: '喝红茶' },
   leshi:         { kind: 'shield',                                        btn: '薯片盾' },
   xiandaishuxue: { kind: 'shrink',                                        btn: '变小' },
-  jiahao:        { kind: 'shoot', dmg: 10, item: 'gun',    snd: 'gun',   btn: '射击' },
-  naiyu:         { kind: 'shoot', dmg: 15, item: 'fork',   snd: 'gun',   btn: '叉击' },
-  xiangjiao:     { kind: 'shoot', dmg: 20, item: 'banana', snd: 'throw', btn: '扔香蕉' }
+  jiahao:        { kind: 'shoot', dmg: 15, item: 'gun',    snd: 'gun',   btn: '射击' },
+  naiyu:         { kind: 'shoot', dmg: 20, item: 'fork',   snd: 'gun',   btn: '叉击' },
+  xiangjiao:     { kind: 'shoot', dmg: 25, item: 'banana', snd: 'throw', btn: '扔香蕉' }
 };
 
 /* M6 音效合成（WebAudio 现场合成，无需外链素材）：
@@ -1239,23 +1240,27 @@ function m6StartSkill() {
   if (!skl) { tryDashCore(); return; }
   if (state !== 'playing' || !V || !player) return;
   if (V.dashCd > 0) return;
-  if (skl.kind === 'shield' && V.m6Shield) { toast('🛡 薯片护盾已在生效中', true); return; }
+  if (skl.kind === 'shield' && V.m6Shield > 0) { toast('🛡 薯片护盾已在生效中', true); return; }
   if (skl.kind === 'shrink' && V.m6ShrinkT > 0) { toast('已经够小了……', true); return; }
   V.dashCd = Math.max(4, 10 - V.up.charge * 2);
   if (skl.kind === 'heal') {
     V.m6Item = { id: skl.item, t: .9, dur: .9, heal: skl.heal };
     playM6Snd(skl.snd);
   } else if (skl.kind === 'shield') {
-    V.m6Shield = true;
+    V.m6Shield = 2;                      // M6b：两片薯片，各挡一次
     V.m6Item = { id: 'chip', t: .8, dur: .8, hold: true };
     playCrunch();
-    toast('🛡 薯片护盾展开：抵挡 1 次攻击', true);
+    toast('🛡 薯片护盾展开：两侧各抵挡 1 次攻击', true);
   } else if (skl.kind === 'shrink') {
     V.m6PreR = player.r;
-    player.r = V.m6MinR;                 // 地图最小体型 = 开局尺寸
+    player.r = Math.max(12, V.m6MinR * .55);   // M6b：比地图最小尺寸更小
     V.m6ShrinkT = 10;
     V.m6BubbleT = 4;
+    /* M6b：变小期间 10 秒无敌金身（与缩小同步结束） */
+    V.m6PreInvuln = invincibleUntil;
+    invincibleUntil = performance.now() + 10000;
     sfx(880, .3, 'sine', .12, 220);
+    toast('✦ 金身无敌 10 秒！趁机苟住', true);
   } else if (skl.kind === 'shoot') {
     playM6Snd(skl.snd);
     V.m6Item = { id: skl.item, t: .7, dur: .7, shoot: true };
@@ -1282,7 +1287,13 @@ function updateM6(dt) {
   if (V.m6BubbleT > 0) V.m6BubbleT -= dt;
   if (V.m6ShrinkT > 0) {
     V.m6ShrinkT -= dt;
-    if (V.m6ShrinkT <= 0) { V.m6ShrinkT = 0; player.r = V.m6PreR; toast('终于缓过来了，变回原来的大小', true); }
+    if (V.m6ShrinkT <= 0) {
+      V.m6ShrinkT = 0;
+      player.r = V.m6PreR;
+      /* 金身随缩小一起结束（只回收本技能给的那段无敌，不覆盖其他来源的无敌） */
+      try { invincibleUntil = Math.min(invincibleUntil, performance.now() + 800); } catch (e) { }
+      toast('终于缓过来了，变回原来的大小', true);
+    }
   }
   /* 吃/喝回血：道具递到嘴边（动画中点）时生效一次 */
   if (V.m6Item && V.m6Item.heal && !V.m6Item.applied && V.m6Item.t <= V.m6Item.dur * .5) {
@@ -1324,15 +1335,22 @@ function drawM6World(t) {
     ctx.drawImage(im, -sz / 2, -sz / 2, sz, sz);
     ctx.restore();
   };
-  /* 薯片护盾：身前悬浮 + 淡金护圈；碎裂期渐隐 */
-  if (V.m6Shield || V.m6ShieldFx > 0) {
-    const a = V.m6Shield ? .95 : Math.max(0, V.m6ShieldFx / .7);
+  /* 薯片护盾：身体两侧各一片，随剩余次数消失；碎裂期渐隐 */
+  if (V.m6Shield > 0 || V.m6ShieldFx > 0) {
+    const a = V.m6Shield > 0 ? .95 : Math.max(0, V.m6ShieldFx / .7);
     const bob = Math.sin(t / 220) * 3;
-    drawSpr('chip', p.x + p.r * .9, p.y - p.r * .4 + bob, p.r * 1.6, Math.sin(t / 300) * .12, a);
-    if (V.m6Shield) {
+    /* 两侧各一片：右侧（朝向侧）+ 左侧 */
+    const sides = [1, -1];
+    for (let si = 0; si < sides.length; si++) {
+      const sgn = sides[si];
+      if (V.m6Shield <= 0 && si === 1) break;         // 只剩 1 片时只画一片
+      drawSpr('chip', p.x + sgn * p.r * .95, p.y - p.r * .25 + bob,
+        p.r * 1.5, sgn * (Math.PI / 2) + Math.sin(t / 300) * .12, a);
+    }
+    if (V.m6Shield > 0) {
       ctx.save();
       ctx.strokeStyle = 'rgba(255,220,120,.5)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.5 + Math.sin(t / 260) * 2, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.55 + Math.sin(t / 260) * 2, 0, TAU); ctx.stroke();
       ctx.restore();
     }
   }
@@ -1389,12 +1407,13 @@ function tapDash(e) {
   if (n - lastTap < 280) tryDash();
   lastTap = n;
 }
-addEventListener('touchstart', tapAttack, { passive: true });
-addEventListener('mousedown', tapAttack);
-/* 技能按钮（右下冲刺按钮上方）：显示冷却，也可点按直接触发 */
+/* 技能按钮（右下角，冲刺按钮上方）：显示冷却，点按直接释放水波 */
 const spinbtn = el('div', 'spinbtn', null, '<div style="display:grid;place-items:center"><b>水波</b><span>单击屏幕</span></div>');
 document.body.appendChild(spinbtn);
 spinbtn.onclick = trySpinAttack;
+/* M6b 修复 BUG1：tapAttack 现在只在游戏中且未点到 UI 时生效，这里注册监听 */
+addEventListener('touchstart', tapAttack, { passive: true });
+addEventListener('mousedown', tapAttack);
 
 /* ------------------------------------------------------------ 7.5 旋转水波（M5b 近战攻击技能）
    参考视频：海豹原地绕纵轴快速自转，身上缠出两条青色螺旋水带（前后分层产生缠绕感），
@@ -1408,15 +1427,17 @@ function trySpinAttack() {
   V.spinCd = SPIN_ATK.cd;
   V.spinT = SPIN_ATK.dur;
   const R = player.r * 2.2 + 36;          // 近战半径：贴身小范围
+  /* M6b：水波强化进化 —— 每级 +5 滴伤害 */
+  const dmg = SPIN_ATK.dmg + (V.up.wave || 0) * 5;
   sfx(560, .45, 'sine', .12, 160);
   sfx(300, .5, 'triangle', .07, 420);
   let hitCnt = 0;
   for (const B of V.bosses.slice()) {
     if (Math.hypot(B.x - player.x, B.y - player.y) < R + B.r * .5) {
-      damageBoss(B, SPIN_ATK.dmg, 'spin'); hitCnt++;
+      damageBoss(B, dmg, 'spin'); hitCnt++;
     }
   }
-  if (hitCnt) toast('〜 水波命中 ' + hitCnt + ' 个 Boss −5', true);
+  if (hitCnt) toast('〜 水波命中 ' + hitCnt + ' 个 Boss −' + dmg, true);
 }
 /* 螺旋水带：每条带绕身体约一圈，前侧段画亮色（back=false，画在身体之上），
    背侧段画半透明暗色（back=true，画在身体之下）→ 形成缠绕身体的立体感 */
@@ -1467,7 +1488,16 @@ function drawSpinBubbles(pr) {
     ctx.stroke();
   }
 }
+/* M6b 修复 BUG1：原来 tapAttack 无差别监听全局 mousedown/touchstart，
+   点「开始游戏」、点进化卡、点商店/设置都会顺带触发水波。
+   现在只在「游戏中」且「没有点到任何 UI 控件」时才判定为单击屏幕。 */
+function isUiTarget(t) {
+  if (!t || !t.closest) return false;
+  return !!t.closest('#startScreen,#overScreen,#lvCards,#lvov,#shopOv,#setOv,.v2ov,#dashbtn,#spinbtn,#panel,#shopBtn,#diffPanel');
+}
 function tapAttack(e) {
+  if (state !== 'playing') return;               // 菜单/进化/结算界面：不触发任何战斗操作
+  if (isUiTarget(e.target)) return;              // 点在按钮/面板/卡牌上：交给控件自己处理
   const n = performance.now();
   if (e.type === 'touchstart') lastTouchTap = n;
   else if (n - lastTouchTap < 600) return;      // 触摸合成的 mousedown，跳过
@@ -1478,11 +1508,14 @@ function tapAttack(e) {
   }
   lastTap = n;
   clearTimeout(tapTimer);
-  tapTimer = setTimeout(() => { tapTimer = 0; trySpinAttack(); }, 300);  // 单击停顿 → 旋转水波
+  tapTimer = setTimeout(() => {
+    tapTimer = 0;
+    if (state === 'playing') trySpinAttack();     // 停顿期间若进了弹窗/结算，放弃这次攻击
+  }, 300);
 }
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (k === ' ' || k === 'shift') { e.preventDefault(); tryDash(); }
+  if (k === ' ' || k === 'shift') { e.preventDefault(); trySpinAttack(); }
   if (state === 'levelup' && ['1', '2', '3'].includes(k)) {
     const c = document.querySelectorAll('#lvCards .lvc'); const i = +k - 1;
     if (c[i]) c[i].click();
@@ -1550,16 +1583,15 @@ function applyLv(id) {
   if (id === 'magnet') { u.magnet++; }
   if (id === 'devour') { u.devour++; }
   if (id === 'combo')  { u.combo++; }
-  /* 注意：不能把 lives 撑到 MAX_LIVES 以上 ——
-     原版 updateHud 用 '🖤'.repeat(MAX_LIVES - lives)，负数会抛 RangeError。
-     所以改成「回满 + 无敌」，满命时也有收益。 */
+  /* M6b：疗愈 —— 改为回 20 滴血 + 短无敌（不再回满） */
   if (id === 'vigor')  {
-    V.hp = V.maxHp;                      /* M4：血量制 —— 回满血量 */
+    V.hp = Math.min(V.maxHp, V.hp + 20);
     lives = 1; updateHud();
-    invincibleUntil = Math.max(invincibleUntil, performance.now() + 5000);
+    invincibleUntil = Math.max(invincibleUntil, performance.now() + 3000);
   }
   if (id === 'charge') { u.charge++; }
   if (id === 'harvest') { u.harvest++; }
+  if (id === 'wave')   { u.wave++; }      /* M6b：水波强化（伤害在 trySpinAttack 里叠加） */
   const d = UPGRADES.find(x => x.id === id);
   sfx(880, .12, 'triangle', .1);
   toast('✦ 进化：' + d.name + '　' + d.d, true);
@@ -1955,13 +1987,13 @@ function showEndlessTitle(mainText, starText) {
 function hitPlayer(dmg, fromBoss) {
   const now = performance.now();
   if (now < invincibleUntil) return;
-  /* M6：薯片护盾 —— 抵挡 1 次攻击后碎裂 */
-  if (V.m6Shield) {
-    V.m6Shield = false;
+  /* M6b：薯片护盾 —— 身体两侧各一片，每片各抵挡 1 次攻击 */
+  if (V.m6Shield > 0) {
+    V.m6Shield--;
     V.m6ShieldFx = .7;
     try { playCrunch(); } catch (e) { }
     for (let i = 0; i < 22; i++) V.parts.push({ x: player.x, y: player.y, vx: rnd(-220, 220), vy: rnd(-220, 220), r: rnd(2, 6), life: rnd(.3, .6), c: '#ffe28a' });
-    toast('🛡 薯片护盾碎裂！攻击被挡下', true);
+    toast(V.m6Shield > 0 ? '🛡 一片薯片碎了，还剩 1 片护盾' : '🛡 薯片护盾全部碎裂！攻击被挡下', true);
     return;
   }
   beep('death');
@@ -2911,7 +2943,9 @@ window.__v2 = {
   get V(){ return V; }, get S(){ return S; }, get player(){ return player; },
   SKINS, UPGRADES, BOSS_DEFS,
   tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice, playStartJingle,
-  damageBoss, trySpinAttack, hitPlayer,
+  damageBoss, trySpinAttack, hitPlayer, applyLv,
+  get invincibleUntil() { return invincibleUntil; },
+  __forceInvuln(ms) { invincibleUntil = performance.now() + ms; },
   M6_SKILLS, get m6Shots() { return V ? V.m6Shots : []; },
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
