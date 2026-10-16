@@ -364,3 +364,10 @@
 - 测试：150→145 / 200→195（−5）、spinCd=8、血条 80/80 与 Boss 血条 145/150 正常、Boss2/3 无方块
 - 新增调试出口 window.__v2.player（getter）；测试技巧：动画截图需 setInterval 保持 spinT，否则截图延迟错过 0.75s 动画
 - commit d8a7b40（GitHub push 暂时网络失败，稍后重推）
+
+## 里程碑 5c（2026-10-16）— 血量统一 100 + 音效全面恢复
+- 玩家血量统一 100 滴（DIFF_HP 三难度全 100），难度只影响积分/成长
+- 血条可见性由 updateHUD2 每帧兜底（修复偶发不显示）
+- 新增开局音效 playStartJingle（三声上行音阶）；吃鱼笑声(EAT_VOLUME=.9)、Boss 出场音效(playBossVoice)、死亡/胜利 beep 均确认在位
+- 新增音频解锁 unlockAudio：首次手势 resume AudioContext + 静音样本预热（修复手机/微信 autoplay 拦截导致的「音效消失」）
+- 实测：hp=100/100、血条 opacity=1、Boss 语音资源 29899B 已加载并触发

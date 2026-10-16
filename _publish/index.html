@@ -691,6 +691,37 @@ function sfx(freq, dur, type, vol, slideTo) {
   } catch (e) { }
 }
 
+/* M5c：音频解锁 —— 浏览器/微信强制要求「用户手势」后才能出声。
+   原版没有这段逻辑，导致手机上首次点击前 AudioContext 处于 suspended、
+   new Audio().play() 被静默拒绝 —— 表现就是「音效没了」。
+   这里在首次任意手势时 resume 音频上下文，并预播一个静音样本打通播放权限。 */
+let _audioUnlocked = false;
+function unlockAudio() {
+  if (_audioUnlocked) return;
+  _audioUnlocked = true;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended' && actx.resume) actx.resume();
+  } catch (e) { }
+  try {
+    /* 用 0 音量的极短样本「预热」HTMLAudio 播放权限（iOS/微信必需） */
+    const a = new Audio(EAT_SOUNDS[0]);
+    a.volume = 0;
+    const pr = a.play();
+    if (pr && pr.then) pr.then(() => { try { a.pause(); } catch (e) { } }).catch(() => { });
+  } catch (e) { }
+}
+['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach(ev =>
+  addEventListener(ev, unlockAudio, { once: false, passive: true }));
+
+/* 开局音效：三声上行音阶（520 → 660 → 880 Hz），比死亡/胜利音更亮，作为开局提示 */
+function playStartJingle() {
+  if (GAME_VOL <= 0) return;
+  sfx(520, .12, 'triangle', .18);
+  setTimeout(() => sfx(660, .12, 'triangle', .18), 110);
+  setTimeout(() => sfx(880, .22, 'triangle', .2), 220);
+}
+
 /* Boss 出场音效：来自抖音「原声」链接（2.7 秒，已内联为 base64） */
 let _bossVoice = null;
 function playBossVoice() {
@@ -702,7 +733,6 @@ function playBossVoice() {
     if (pr && pr.catch) pr.catch(() => { });
   } catch (e) { }
 }
-
 /* ------------------------------------------------------------ 2. 存档 */
 const SKEY = 'sealV2';
 let S = (function () {
@@ -990,8 +1020,8 @@ const UPGRADES = [
 let V = null;   // v2 局内状态
 let GAME_MODE = 'normal';   // 'normal' | 'endless'（普通 / 无尽）
 let CUR_DIFF = 'hard';      // 当前难度键 'easy' | 'hard' | 'hell'（无尽模式积分倍率用）
-/* M4：各难度初始血量（简单 100 / 困难 80 / 地狱 50） */
-const DIFF_HP = { easy: 100, hard: 80, hell: 50 };
+/* M4：各难度初始血量（M5c 改：统一 100 滴，难度只影响积分/成长不影响血量） */
+const DIFF_HP = { easy: 100, hard: 100, hell: 100 };
 function diffStartHp() {
   return DIFF_HP[CUR_DIFF] || 100;
 }
@@ -1001,7 +1031,7 @@ function newV() {
     lvl: 1, exp: 0, expNeed: 10, pendingLv: 0,
     up: { giant: 0, swift: 0, magnet: 0, devour: 0, combo: 0, charge: 0, harvest: 0 },
     coinsRun: 0, combo: 0, comboT: 0, maxCombo: 0,
-    hp: hp0, maxHp: hp0,          /* M4：血量制生命（难度决定上限：简单 100 / 困难 80 / 地狱 50） */
+    hp: hp0, maxHp: hp0,          /* M4：血量制生命（M5c 统一 100 滴） */
     dashT: 0, dashCd: 0, dashX: 1, dashY: 0,
     spinT: 0, spinCd: 0,            /* M5：旋转水波技能（动画剩余时间 / 冷却） */
     eatCount: 0,
@@ -2783,6 +2813,8 @@ start = function () {
   } catch (e) { }
   _start.apply(this, arguments);
   lastV2 = performance.now();
+  /* M5c：开局音效（三声上行音阶，原版没有开局提示音） */
+  try { playStartJingle(); } catch (e) { }
   /* M4：血量按难度重置（原版 reset 可能在 start 之前/之后调用，这里再兜一次） */
   if (V) {
     const hp0 = diffStartHp();
@@ -3025,6 +3057,8 @@ function updateV2(dt, now) {
 
 function updateHUD2() {
   if (!V) return;
+  /* M5c：血条可见性由主循环每帧兜底（原版 start/reset 时序不稳导致偶尔不显示） */
+  if (state === 'playing' || state === 'levelup') hpbox.classList.add('on');
   const c = document.getElementById('v2coin'); if (c) c.textContent = fmt(S.coins + V.coinsRun);
   const cm = document.getElementById('v2combo'); if (cm) cm.textContent = V.combo;
   const lt = document.getElementById('lvt'); if (lt) lt.textContent = 'Lv.' + V.lvl;
@@ -3074,7 +3108,7 @@ updateShopCoin();
 window.__v2 = {
   get V(){ return V; }, get S(){ return S; }, get player(){ return player; },
   SKINS, UPGRADES, BOSS_DEFS,
-  tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice,
+  tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice, playStartJingle,
   damageBoss, trySpinAttack,
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
