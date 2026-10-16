@@ -1011,10 +1011,10 @@ const BOSS_DEFS = [
     line: '◆ 袋鼠 DJ 登场！吃掉它的 3 个音响！' },
   { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣包', orbIc: '◆', orbC: '#ff3b30',
     sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 20, hp: 150, reward: 200, orbCoin: 50,
-    line: '◆ 魔芋爽辣王来了！吃掉它的 3 个辣包！' },
+    line: '◆ 魔芋爽辣王来了！撞掉它的 150 血！' },
   { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '答案卷', orbIc: '■', orbC: '#4cc9f0',
     sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 10, hp: 200, reward: 300, orbCoin: 80,
-    line: '◆ 高数压轴登场！小心它的函数轨迹线！' }
+    line: '◆ 高数压轴登场！小心它的函数引力线！撞掉它的 200 血！' }
 ];
 /* ---- M2：辣条子弹贴图（V2_LATIAO_SRC 由 HTML 素材块注入） ---- */
 const LATIAO_IMG = new Image();
@@ -1028,10 +1028,8 @@ const INTEGRAL_IMG = new Image();
 if (typeof V2_INTEGRAL_SRC === 'string' && V2_INTEGRAL_SRC) INTEGRAL_IMG.src = V2_INTEGRAL_SRC;
 const MATH3 = {
   beamCd: 6,          // 拉人技能冷却（秒）
-  beamDur: 4.2,       // 拉拽持续时长（放慢速度后拉得更久，多扣血）
   beamSpeed: 150,     // 拉拽速度（px/s，放慢 → 拉拽时间更长，每秒扣血累计更多）
   beamDps: 5,         // 拉拽期间每秒扣血
-  beamRange: 1100,    // 拉人触发距离（玩家在 Boss 这个距离内才拉）
   pullStop: 150,      // 拉到距离 Boss 这么近停住（"课本"范围）
   danmakuCd: 1.6,     // 弹幕波次间隔
   danmakuDmg: 10,     // 每个积分号伤害
@@ -1663,9 +1661,12 @@ function spawnBoss(i) {
     def, t: 0, ph: 1, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: rnd(H * .3, H * .7),
     r: def.r, atk: 2, hitT: 0,
     hp: def.hp, maxHp: def.hp,          /* M4：Boss 血量 */
-    beam: null, beamT: 0, danT: 0,      /* M4：Boss3 拉人 / 弹幕状态 */
-    orbs: [0, 1, 2].map(k => ({ alive: true, state: 'guarded', cyc: 2.6 + k * 1.3, r: 19,
-      ang: k * TAU / 3, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+    beam: null, beamStop: 0, danT: 0,   /* M4：Boss3 拉人 / 弹幕状态 */
+    /* M4：核心方块只有 Boss1(DJ) 保留（吃外卖击败）；Boss2/3 无方块，纯血量击败 */
+    orbs: def.key === 'dj'
+      ? [0, 1, 2].map(k => ({ alive: true, state: 'guarded', cyc: 2.6 + k * 1.3, r: 19,
+          ang: k * TAU / 3, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+      : []
   };
   V.bosses.push(boss);
   bossbar.classList.add('on');
@@ -1750,13 +1751,15 @@ function updateBossOne(B, dt) {
     }
   } else {
     /* M4：高数压轴技能重做 ——
-       ① 函数线条把玩家从远处拉过来（拉拽期间每秒扣 5 滴）；
+       ① 函数线条把玩家持续拉过来（拉拽期间每秒扣 5 滴），攻击范围为半个地图；
+          只有「玩家受到攻击」或「玩家离开攻击范围」时才会停止；
        ② 玩家被拉近"课本"（Boss 本体）附近后改发弹幕：
           积分号贴图横着发出、飞行中 360° 旋转、碰到扣 10 滴。 */
     const pd = Math.hypot(player.x - B.x, player.y - B.y);
+    /* 半个地图 = 世界对角线的一半（按当前视野推算，兼容任意分辨率） */
+    const halfMap = Math.max(W, H) * .5;
     if (B.beam) {
-      /* 拉拽中：把玩家朝 Boss 拽，同时描出函数感的波动线条 */
-      B.beamT -= dt;
+      /* 拉拽中：持续把玩家朝 Boss 拽；受伤标记/超范围则中断 */
       const dx = B.x - player.x, dy = B.y - player.y, d = Math.hypot(dx, dy) || 1;
       if (d > MATH3.pullStop) {
         player.x = clamp(player.x + dx / d * MATH3.beamSpeed * dt, player.r, W - player.r);
@@ -1765,11 +1768,14 @@ function updateBossOne(B, dt) {
       }
       B.beamTick -= dt;
       if (B.beamTick <= 0) { B.beamTick += 1; hitPlayer(MATH3.beamDps, true); }
-      if (B.beamT <= 0 || d <= MATH3.pullStop + 10) B.beam = null;
+      /* 玩家受击（beamHurt 由 hitPlayer 打标）或离开攻击范围 → 解除拉拽 */
+      if (d <= MATH3.pullStop + 10 || d > halfMap || B.beamStop) {
+        B.beam = null; B.beamStop = 0;
+      }
     } else {
       B.beamCdT = (B.beamCdT === undefined ? MATH3.beamCd : B.beamCdT) - dt;
-      if (B.beamCdT <= 0 && pd < MATH3.beamRange) {
-        B.beam = true; B.beamT = MATH3.beamDur; B.beamTick = .4;
+      if (B.beamCdT <= 0 && pd < halfMap) {
+        B.beam = true; B.beamTick = .4;
         B.beamCdT = MATH3.beamCd;
         toast('§ 函数引力 · 被拉过去了！', true);
         sfx(150, .5, 'sawtooth', .1, 45);
@@ -1796,14 +1802,33 @@ function updateBossOne(B, dt) {
     } else B.danT = Math.min(B.danT || 0, .5);
   }
 
-  // 撞本体
+  // 撞本体：玩家撞 Boss 双向受伤 —— 玩家掉 6 滴；同时按体型对 Boss 造成伤害
+  if (B.touchCd > 0) B.touchCd -= dt;
   const bd = Math.hypot(player.x - B.x, player.y - B.y);
   if (bd < B.r * .55 + player.r * .7) {
     const k = 260 / (bd || 1);
     pointer.x = clamp(pointer.x + (player.x - B.x) / bd * 60, 0, W);
     pointer.y = clamp(pointer.y + (player.y - B.y) / bd * 60, 0, H);
+    /* M4：撞击对 Boss 造成伤害（Boss2/3 靠这个「打死」），带 0.45 秒冷却防连刷 */
+    if (!B.touchCd || B.touchCd <= 0) {
+      B.touchCd = .45;
+      damageBoss(B, Math.max(4, Math.round(player.r * .55)), 'touch');
+    }
     hitPlayer(6, true);
   }
+}
+
+/* M4：Boss 统一掉血入口（血量归零即击败；DJ 也保留吃完 3 个外卖直接击败） */
+function damageBoss(B, dmg, why) {
+  if (!V || !B || B.hp <= 0) return;
+  B.hp = Math.max(0, B.hp - dmg);
+  B.hitT = .35;
+  sfx(420, .07, 'square', .05, 700);
+  for (let q = 0; q < 8; q++) V.parts.push({
+    x: B.x + rnd(-B.r * .5, B.r * .5), y: B.y + rnd(-B.r * .5, B.r * .5),
+    vx: rnd(-160, 160), vy: rnd(-160, 160), r: rnd(2, 6), life: .35, c: '#ffd54a'
+  });
+  if (B.hp <= 0) defeatBoss(B);
 }
 
 function updateBullets(dt) {
@@ -1885,7 +1910,7 @@ function eatOrb(o, B) {
   const D = B.def;
   o.alive = false;
   B.ph = Math.min(3, B.ph + 1);
-  /* M4：Boss 血量 —— 每吃一个核心物扣 1/3 总血量，三个吃完 Boss 倒下 */
+  /* M4：Boss1 特例 —— 吃掉全部 3 个外卖（音响）即直接击败，也可以靠撞击扣血打死 */
   B.hp = Math.max(0, B.hp - Math.round(B.maxHp / 3));
   B.hitT = .4;
   const gain = Math.round(D.orbCoin * coinMul());
@@ -1897,7 +1922,8 @@ function eatOrb(o, B) {
   toast('◆ 吃掉' + D.orb + '！积分 +' + gain, true);
   sfx(240, .3, 'sawtooth', .1, 90);
   for (let q = 0; q < 26; q++) V.parts.push({ x: o.x, y: o.y, vx: rnd(-260, 260), vy: rnd(-260, 260), r: rnd(3, 9), life: rnd(.4, .8), c: '#ffd54a' });
-  if (B.orbs.every(x => !x.alive)) defeatBoss(B);
+  /* 血量归零（吃 3 个外卖刚好扣光）→ 击败；DJ 仍保留「吃完外卖」这条捷径 */
+  if (B.hp <= 0) defeatBoss(B);
 }
 
 function defeatBoss(B) {
@@ -2031,6 +2057,8 @@ function hitPlayer(dmg, fromBoss) {
      死亡时 lives=0 触发原版结算流程 */
   V.hp = Math.max(0, V.hp - (dmg || 1));
   lives = V.hp > 0 ? 1 : 0;
+  /* M4：受到攻击 → 打断 Boss3 的持续拉拽（需求：只有受击或离开范围才停） */
+  if (V.bosses) for (const B of V.bosses) if (B.beam) B.beamStop = 1;
   updateHud();
   if (V.hp <= 0) return endGame(false);
   player.r = Math.max(START_SIZE, player.r * (fromBoss ? 0.9 : 0.95));
@@ -2397,21 +2425,12 @@ function drawPlayerV2(t) {  const p = player;
   }
   ctx.scale(p.dir, 1);
   /* M1 视觉：动态 2D —— 呼吸浮动 + 摆尾扭切 + 冲刺拉伸，游动感来自三者的叠加 */
-  const nowMs = performance.now();
   const bob = Math.sin(t / 300) * 3;
   ctx.rotate(Math.sin(t / 350) * 0.06);
   const sway = Math.sin(t / 190) * 0.055;                       // 摆尾：横向扭切
   ctx.transform(1, 0, sway, 1, 0, 0);
   if (V && V.dashT > 0) ctx.scale(1.08, .92);                   // 冲刺：前拉伸后压扁
-  /* 张嘴吃鱼：吃到鱼后的 310ms 内画张开的嘴 + 咀嚼缩放 */
-  let chomp = 0;                                                 // 0~1 咀嚼强度
-  if (V && V.mouthT) {
-    const mt = nowMs - V.mouthT;
-    if (mt < 310) {
-      chomp = mt < 90 ? 1 - mt / 90 : .55 * (1 - (mt - 90) / 220);
-      ctx.scale(1 + chomp * .07, 1 - chomp * .06);               // 咬合时身体轻微压缩
-    }
-  }
+  /* M5：删除 M2 的「张嘴吃鱼」动画（需求：里程2 里的吃东西动画删除） */
   /* M3：无敌不再用闪烁虚影（移除 globalAlpha 闪烁），金身效果见上方光环+辉光 */
   drawSealTail(t, p, m, bob);
   if (m) {
@@ -2422,18 +2441,6 @@ function drawPlayerV2(t) {  const p = player;
   else if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
   ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
   ctx.shadowBlur = 0;
-    /* 张嘴：贴图嘴部位置画一个深色椭圆口腔 + 上下颚高光
-       位置：头部前方、眼睛正下方一点（x 前方 0.30，y +0.03），随体型缩放 */
-    if (chomp > 0) {
-      const mx = m.size * .30 * k, my = m.size * .03 * k;
-      ctx.save();
-      ctx.translate(mx, my + bob);
-      ctx.fillStyle = 'rgba(60,20,20,.85)';
-      ctx.beginPath(); ctx.ellipse(0, 0, p.r * .30 * chomp + 1, p.r * .22 * chomp + 1, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = 'rgba(255,120,120,.5)';
-      ctx.beginPath(); ctx.ellipse(0, p.r * .10 * chomp, p.r * .16 * chomp, p.r * .07 * chomp, 0, 0, TAU); ctx.fill();
-      ctx.restore();
-    }
   } else {
     ctx.fillStyle = '#ffd54a';
     ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * .8, 0, 0, TAU); ctx.fill();
@@ -2950,6 +2957,7 @@ window.__v2 = {
   get V(){ return V; }, get S(){ return S; },
   SKINS, UPGRADES, BOSS_DEFS,
   tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice,
+  damageBoss,
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
   get cloudUser() { return cloudUser; },
