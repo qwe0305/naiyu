@@ -371,3 +371,13 @@
 - 新增开局音效 playStartJingle（三声上行音阶）；吃鱼笑声(EAT_VOLUME=.9)、Boss 出场音效(playBossVoice)、死亡/胜利 beep 均确认在位
 - 新增音频解锁 unlockAudio：首次手势 resume AudioContext + 静音样本预热（修复手机/微信 autoplay 拦截导致的「音效消失」）
 - 实测：hp=100/100、血条 opacity=1、Boss 语音资源 29899B 已加载并触发
+
+## M6b（2026-10-16）— 里程6修正六项
+1. **UI 误触修复**：tapAttack 增加 state!=='playing' 守卫 + isUiTarget() 判定（开始界面/进化卡/商店/按钮等不再误发水波）；空格/Shift 改走 trySpinAttack
+2. **薯片护盾双侧**：m6Shield 改计数 2，hitPlayer 每次拦截 -1；视觉左右各一片薯片
+3. **线性代数**：模型更小（r=min*.55），触发 10s 无敌金身
+4. **射击伤害 +5**：嘉豪枪 15 / 奶鱼叉 20 / 香蕉 25
+5. **新增进化「水波强化」**：每次水波伤害 +5（可叠加，u.wave）
+6. **疗愈改版**：回满血 → 立刻回复 20 滴 + 3 秒无敌
+验证：agent-browser 单链 eval 全通过（护盾 2→1→0、r 60→14.3、伤害 15/20/25、水波 5→10、疗愈 30→50）。
+commit e1fa04c，已发布线上。
