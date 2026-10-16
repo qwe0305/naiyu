@@ -37,6 +37,17 @@ const CSS = `
 #dashbtn.cd{opacity:.45}
 #dashbtn.cd b{font-size:20px;color:#9fb4c7;letter-spacing:0}
 #dashbtn:active{transform:scale(.93)}
+/* M5：旋转水波技能按钮（冲刺按钮上方） */
+#spinbtn{position:fixed;right:18px;bottom:118px;width:64px;height:64px;border-radius:50%;
+  display:grid;place-items:center;line-height:1.15;text-align:center;z-index:7;cursor:pointer;
+  background:radial-gradient(circle at 35% 30%,rgba(110,231,160,.45),rgba(6,40,61,.9));
+  border:2px solid rgba(110,231,160,.6);backdrop-filter:blur(8px);box-shadow:0 8px 22px rgba(0,0,0,.35);
+  user-select:none;-webkit-user-select:none;transition:transform .1s, opacity .2s}
+#spinbtn b{font-size:15px;color:#eaf7ff;letter-spacing:2px}
+#spinbtn span{font-size:9px;color:#8fe6b5;letter-spacing:1px}
+#spinbtn.cd{opacity:.45}
+#spinbtn.cd b{font-size:18px;color:#9fc7b4;letter-spacing:0}
+#spinbtn:active{transform:scale(.93)}
 /* 面板可滚动：原版给 html,body 设了 touch-action:none + overflow:hidden，这里在面板打开时放开 */
 html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavior:none}
 .v2ov{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;
@@ -574,6 +585,7 @@ function newV() {
     coinsRun: 0, combo: 0, comboT: 0, maxCombo: 0,
     hp: hp0, maxHp: hp0,          /* M4：血量制生命（难度决定上限：简单 100 / 困难 80 / 地狱 50） */
     dashT: 0, dashCd: 0, dashX: 1, dashY: 0,
+    spinT: 0, spinCd: 0,            /* M5：旋转水波技能（动画剩余时间 / 冷却） */
     eatCount: 0,
     bosses: [], bossIdx: -1, bossDone: 0, trig: [false, false, false],
     endless: { star: 0, round: 0, roundDone: 0, lastPick: -1, active: false, pendingWave: 0, nextWaveAt: 0 },
@@ -592,8 +604,8 @@ const BOSS_DEFS = [
     sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 20, hp: 100, reward: 100, orbCoin: 30,
     line: '◆ 袋鼠 DJ 登场！吃掉它的 3 个音响！' },
   { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣包', orbIc: '◆', orbC: '#ff3b30',
-    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 20, hp: 150, reward: 200, orbCoin: 50,
-    line: '◆ 魔芋爽辣王来了！撞掉它的 150 血！' },
+    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 10, hp: 150, reward: 200, orbCoin: 50,
+    line: '◆ 魔芋爽辣王来了！用旋转水波打掉它的 150 血！' },
   { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '答案卷', orbIc: '■', orbC: '#4cc9f0',
     sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 10, hp: 200, reward: 300, orbCoin: 80,
     line: '◆ 高数压轴登场！小心它的函数引力线！撞掉它的 200 血！' }
@@ -1147,8 +1159,48 @@ function tapDash(e) {
   if (n - lastTap < 280) tryDash();
   lastTap = n;
 }
-addEventListener('touchstart', tapDash, { passive: true });
-addEventListener('mousedown', tapDash);
+addEventListener('touchstart', tapAttack, { passive: true });
+addEventListener('mousedown', tapAttack);
+/* 技能按钮（右下冲刺按钮上方）：显示冷却，也可点按直接触发 */
+const spinbtn = el('div', 'spinbtn', null, '<div style="display:grid;place-items:center"><b>水波</b><span>单击屏幕</span></div>');
+document.body.appendChild(spinbtn);
+spinbtn.onclick = trySpinAttack;
+
+/* ------------------------------------------------------------ 7.5 旋转水波（M5 玩家攻击技能）
+   参考图：鱼 360° 旋转搅出多层水环。单击屏幕触发：
+   海豹原地转两圈 + 三圈青色水环向外扩散，扩散范围内所有 Boss 各扣 8 滴血。
+   冷却 8 秒；单击与双击（冲刺）靠 300ms 停顿区分。 */
+const SPIN_ATK = { cd: 8, dmg: 8, dur: .75 };
+let tapTimer = 0;
+function trySpinAttack() {
+  if (state !== 'playing' || !V || !player) return;
+  if (V.spinCd > 0) return;
+  V.spinCd = SPIN_ATK.cd;
+  V.spinT = SPIN_ATK.dur;
+  const R = player.r * 3.2 + 80;          // 攻击半径（小范围：体型 3 倍 + 80）
+  sfx(560, .45, 'sine', .12, 160);
+  sfx(300, .5, 'triangle', .07, 420);
+  let hitCnt = 0;
+  for (const B of V.bosses.slice()) {
+    if (Math.hypot(B.x - player.x, B.y - player.y) < R + B.r * .5) {
+      damageBoss(B, SPIN_ATK.dmg, 'spin'); hitCnt++;
+    }
+  }
+  if (hitCnt) toast('〜 水波命中 ' + hitCnt + ' 个 Boss −8', true);
+}
+function tapAttack(e) {
+  const n = performance.now();
+  if (e.type === 'touchstart') lastTouchTap = n;
+  else if (n - lastTouchTap < 600) return;      // 触摸合成的 mousedown，跳过
+  if (n - lastTap < 280) {                       // 双击 → 冲刺（取消挂起的单击攻击）
+    clearTimeout(tapTimer); tapTimer = 0;
+    tryDash(); lastTap = 0;
+    return;
+  }
+  lastTap = n;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => { tapTimer = 0; trySpinAttack(); }, 300);  // 单击停顿 → 旋转水波
+}
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === ' ' || k === 'shift') { e.preventDefault(); tryDash(); }
@@ -1384,19 +1436,11 @@ function updateBossOne(B, dt) {
     } else B.danT = Math.min(B.danT || 0, .5);
   }
 
-  // 撞本体：玩家撞 Boss 双向受伤 —— 玩家掉 6 滴；同时按体型对 Boss 造成伤害
-  if (B.touchCd > 0) B.touchCd -= dt;
+  // 撞本体：M5 起撞击不掉血，只把玩家把弹开（伤害只来自声波/辣条/积分符号/函数触手/拉拽）
   const bd = Math.hypot(player.x - B.x, player.y - B.y);
   if (bd < B.r * .55 + player.r * .7) {
-    const k = 260 / (bd || 1);
-    pointer.x = clamp(pointer.x + (player.x - B.x) / bd * 60, 0, W);
-    pointer.y = clamp(pointer.y + (player.y - B.y) / bd * 60, 0, H);
-    /* M4：撞击对 Boss 造成伤害（Boss2/3 靠这个「打死」），带 0.45 秒冷却防连刷 */
-    if (!B.touchCd || B.touchCd <= 0) {
-      B.touchCd = .45;
-      damageBoss(B, Math.max(4, Math.round(player.r * .55)), 'touch');
-    }
-    hitPlayer(6, true);
+    pointer.x = clamp(pointer.x + (player.x - B.x) / bd * 90, 0, W);
+    pointer.y = clamp(pointer.y + (player.y - B.y) / bd * 90, 0, H);
   }
 }
 
@@ -2006,6 +2050,33 @@ function drawPlayerV2(t) {  const p = player;
     ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.5; ctx.stroke();
   }
   ctx.scale(p.dir, 1);
+  /* M5：旋转水波技能 —— 海豹原地转两圈，三层青色水环向外扩散（参考图：鱼旋转搅出水波） */
+  if (V && V.spinT > 0) {
+    const pr = 1 - V.spinT / SPIN_ATK.dur;                 // 0→1 动画进度
+    ctx.rotate(pr * TAU * 2);                              // 360°×2 旋转
+    ctx.save();
+    ctx.scale(p.dir, 1);                                   // 水环不随朝向翻转
+    for (let ring = 0; ring < 3; ring++) {
+      const rp = clamp(pr * 1.5 - ring * .22, 0, 1);       // 各环错峰扩散
+      if (rp <= 0) continue;
+      const rr = p.r * 1.15 + rp * (p.r * 2.1 + 68);
+      const a = .8 * (1 - rp);
+      ctx.strokeStyle = 'rgba(140,228,255,' + a.toFixed(3) + ')';
+      ctx.lineWidth = 5 - ring * 1.2;
+      ctx.shadowColor = 'rgba(120,210,255,.8)'; ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rr, rr * .82, Math.sin(pr * 9 + ring) * .25, 0, TAU);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      /* 内侧白色高光弧（水环碎浪感） */
+      ctx.strokeStyle = 'rgba(235,252,255,' + (a * .7).toFixed(3) + ')';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rr * .96, rr * .78, Math.sin(pr * 9 + ring) * .25, pr * 7 + ring * 2, pr * 7 + ring * 2 + 1.6);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   /* M1 视觉：动态 2D —— 呼吸浮动 + 摆尾扭切 + 冲刺拉伸，游动感来自三者的叠加 */
   const bob = Math.sin(t / 300) * 3;
   ctx.rotate(Math.sin(t / 350) * 0.06);
@@ -2423,6 +2494,9 @@ function updateV2(dt, now) {
 
   /* --- 冲刺位移 --- */
   if (V.dashCd > 0) V.dashCd -= dt;
+  /* M5：旋转水波技能计时 */
+  if (V.spinCd > 0) V.spinCd -= dt;
+  if (V.spinT > 0) V.spinT -= dt;
   if (V.dashT > 0) {
     V.dashT -= dt;
     P.x = clamp(P.x + V.dashX * 1250 * dt, P.r, W - P.r);
@@ -2520,6 +2594,12 @@ function updateHUD2() {
     if (V.dashCd > 0) { db.classList.add('cd'); db.querySelector('b').textContent = V.dashCd.toFixed(1); }
     else { db.classList.remove('cd'); db.querySelector('b').textContent = '冲刺'; }
   }
+  /* M5：旋转水波技能按钮冷却 */
+  const sb = document.getElementById('spinbtn');
+  if (sb) {
+    if (V.spinCd > 0) { sb.classList.add('cd'); sb.querySelector('b').textContent = Math.ceil(V.spinCd); }
+    else { sb.classList.remove('cd'); sb.querySelector('b').textContent = '水波'; }
+  }
 }
 
 requestAnimationFrame(loopV2);
@@ -2539,7 +2619,7 @@ window.__v2 = {
   get V(){ return V; }, get S(){ return S; },
   SKINS, UPGRADES, BOSS_DEFS,
   tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice,
-  damageBoss,
+  damageBoss, trySpinAttack,
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
   get cloudUser() { return cloudUser; },
