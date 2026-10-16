@@ -1166,18 +1166,18 @@ const spinbtn = el('div', 'spinbtn', null, '<div style="display:grid;place-items
 document.body.appendChild(spinbtn);
 spinbtn.onclick = trySpinAttack;
 
-/* ------------------------------------------------------------ 7.5 旋转水波（M5 玩家攻击技能）
-   参考图：鱼 360° 旋转搅出多层水环。单击屏幕触发：
-   海豹原地转两圈 + 三圈青色水环向外扩散，扩散范围内所有 Boss 各扣 8 滴血。
+/* ------------------------------------------------------------ 7.5 旋转水波（M5b 近战攻击技能）
+   参考视频：海豹原地绕纵轴快速自转，身上缠出两条青色螺旋水带（前后分层产生缠绕感），
+   伴随上升气泡与白色碎浪。近战范围：仅贴身小半径内 Boss 各扣 5 滴血。
    冷却 8 秒；单击与双击（冲刺）靠 300ms 停顿区分。 */
-const SPIN_ATK = { cd: 8, dmg: 8, dur: .75 };
+const SPIN_ATK = { cd: 8, dmg: 5, dur: .75 };
 let tapTimer = 0;
 function trySpinAttack() {
   if (state !== 'playing' || !V || !player) return;
   if (V.spinCd > 0) return;
   V.spinCd = SPIN_ATK.cd;
   V.spinT = SPIN_ATK.dur;
-  const R = player.r * 3.2 + 80;          // 攻击半径（小范围：体型 3 倍 + 80）
+  const R = player.r * 2.2 + 36;          // 近战半径：贴身小范围
   sfx(560, .45, 'sine', .12, 160);
   sfx(300, .5, 'triangle', .07, 420);
   let hitCnt = 0;
@@ -1186,7 +1186,56 @@ function trySpinAttack() {
       damageBoss(B, SPIN_ATK.dmg, 'spin'); hitCnt++;
     }
   }
-  if (hitCnt) toast('〜 水波命中 ' + hitCnt + ' 个 Boss −8', true);
+  if (hitCnt) toast('〜 水波命中 ' + hitCnt + ' 个 Boss −5', true);
+}
+/* 螺旋水带：每条带绕身体约一圈，前侧段画亮色（back=false，画在身体之上），
+   背侧段画半透明暗色（back=true，画在身体之下）→ 形成缠绕身体的立体感 */
+function drawSpinRibbon(pr, back) {
+  const A = player.r * 1.55, yT = -player.r * 1.35, yB = player.r * 1.45;
+  for (let s = 0; s < 2; s++) {
+    const th0 = pr * TAU * 2.2 + s * Math.PI;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i <= 28; i++) {
+      const u = i / 28;
+      const th = th0 + u * TAU * .9;
+      if ((Math.cos(th) < 0) === back) { started = false; continue; }
+      const x = Math.sin(th) * A;
+      const y = yT + u * (yB - yT);
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = back ? 'rgba(130,215,250,.45)' : 'rgba(150,238,255,.95)';
+    ctx.lineWidth = back ? 4 : 8;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(110,215,255,1)'; ctx.shadowBlur = back ? 6 : 18;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    if (!back) {                          // 前侧带的白色碎浪高光
+      ctx.strokeStyle = 'rgba(245,253,255,.75)';
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    }
+  }
+}
+/* 上升气泡 + 白色泡沫：围绕海豹螺旋外扩、向上飘散，随动画进度渐隐 */
+function drawSpinBubbles(pr) {
+  const a0 = 1 - pr;
+  if (a0 <= 0) return;
+  for (let k = 0; k < 10; k++) {
+    const th = k * .63 + pr * 5;
+    const rr = player.r * (1.15 + pr * 1.7);
+    const bx = Math.cos(th) * rr;
+    const by = Math.sin(th) * rr * .45 - pr * 75 - k * 2.5;
+    const a = a0 * .8;
+    const br = 2 + (k % 3) * 1.6;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU);
+    ctx.fillStyle = 'rgba(200,238,255,' + (a * .3).toFixed(3) + ')';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(228,248,255,' + a.toFixed(3) + ')';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
 }
 function tapAttack(e) {
   const n = performance.now();
@@ -2050,32 +2099,16 @@ function drawPlayerV2(t) {  const p = player;
     ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.5; ctx.stroke();
   }
   ctx.scale(p.dir, 1);
-  /* M5：旋转水波技能 —— 海豹原地转两圈，三层青色水环向外扩散（参考图：鱼旋转搅出水波） */
-  if (V && V.spinT > 0) {
-    const pr = 1 - V.spinT / SPIN_ATK.dur;                 // 0→1 动画进度
-    ctx.rotate(pr * TAU * 2);                              // 360°×2 旋转
-    ctx.save();
-    ctx.scale(p.dir, 1);                                   // 水环不随朝向翻转
-    for (let ring = 0; ring < 3; ring++) {
-      const rp = clamp(pr * 1.5 - ring * .22, 0, 1);       // 各环错峰扩散
-      if (rp <= 0) continue;
-      const rr = p.r * 1.15 + rp * (p.r * 2.1 + 68);
-      const a = .8 * (1 - rp);
-      ctx.strokeStyle = 'rgba(140,228,255,' + a.toFixed(3) + ')';
-      ctx.lineWidth = 5 - ring * 1.2;
-      ctx.shadowColor = 'rgba(120,210,255,.8)'; ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, rr, rr * .82, Math.sin(pr * 9 + ring) * .25, 0, TAU);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      /* 内侧白色高光弧（水环碎浪感） */
-      ctx.strokeStyle = 'rgba(235,252,255,' + (a * .7).toFixed(3) + ')';
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, rr * .96, rr * .78, Math.sin(pr * 9 + ring) * .25, pr * 7 + ring * 2, pr * 7 + ring * 2 + 1.6);
-      ctx.stroke();
-    }
-    ctx.restore();
+  /* M5b：旋转水波 —— 海豹原地绕纵轴快速自转 + 青色螺旋水带缠绕身体 + 气泡泡沫（参考视频） */
+  const spinning = V && V.spinT > 0;
+  const prSpin = spinning ? 1 - V.spinT / SPIN_ATK.dur : 0;
+  if (spinning) drawSpinRibbon(prSpin, true);            // 背侧水带（画在身体后面）
+  ctx.save();                                            // 自转只作用于身体
+  if (spinning) {
+    /* 绕纵轴自转：水平缩放模拟——身体随 cos 变窄/翻面（参考视频效果），而非画布旋转 */
+    const cs = Math.cos(prSpin * TAU * 3);
+    const sx = Math.abs(cs) < .18 ? (cs < 0 ? -.18 : .18) : cs;
+    ctx.scale(sx, 1);
   }
   /* M1 视觉：动态 2D —— 呼吸浮动 + 摆尾扭切 + 冲刺拉伸，游动感来自三者的叠加 */
   const bob = Math.sin(t / 300) * 3;
@@ -2097,6 +2130,11 @@ function drawPlayerV2(t) {  const p = player;
   } else {
     ctx.fillStyle = '#ffd54a';
     ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * .8, 0, 0, TAU); ctx.fill();
+  }
+  ctx.restore();                                         // 结束自转
+  if (spinning) {
+    drawSpinRibbon(prSpin, false);                       // 前侧水带（画在身体上面）
+    drawSpinBubbles(prSpin);                             // 上升气泡 + 白色泡沫
   }
   ctx.restore();
 }
@@ -2616,7 +2654,7 @@ updateShopCoin();
 
 /* ---- 调试出口（便于自动化测试，不影响游戏）---- */
 window.__v2 = {
-  get V(){ return V; }, get S(){ return S; },
+  get V(){ return V; }, get S(){ return S; }, get player(){ return player; },
   SKINS, UPGRADES, BOSS_DEFS,
   tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice,
   damageBoss, trySpinAttack,
