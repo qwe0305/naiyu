@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>神金海豹大作战 · V0.5</title>
@@ -1743,16 +1746,16 @@ function m6StartSkill() {
   const skl = M6_SKILLS[S.equipped];
   if (!skl) { tryDashCore(); return; }
   if (state !== 'playing' || !V || !player) return;
-  if (V.dashCd > 0) return;
-  if (skl.kind === 'shield' && V.m6Shield > 0) { toast('🛡 薯片护盾已在生效中', true); return; }
-  if (skl.kind === 'shrink' && V.m6ShrinkT > 0) { toast('已经够小了……', true); return; }
-  /* M7：清屏技能走独立 60 秒冷却（V.clearCd），其余技能沿用冲刺冷却 */
+  /* M9b：清屏走独立冷却，必须在 dashCd 拦截之前判断，否则冲刺冷却会误拦清屏 */
   if (skl.kind === 'clear') {
     if ((V.clearCd || 0) > 0) return;
     V.clearCd = CLEAR_CD;
     m6ClearScreen();
     return;
   }
+  if (V.dashCd > 0) return;
+  if (skl.kind === 'shield' && V.m6Shield > 0) { toast('🛡 薯片护盾已在生效中', true); return; }
+  if (skl.kind === 'shrink' && V.m6ShrinkT > 0) { toast('已经够小了……', true); return; }
   V.dashCd = Math.max(4, 10 - V.up.charge * 2);
   if (skl.kind === 'heal') {
     V.m6Item = { id: skl.item, t: .9, dur: .9, heal: skl.heal };
