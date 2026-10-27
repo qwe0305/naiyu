@@ -447,3 +447,49 @@ commit e1fa04c，已发布线上。
 | 积分弹幕触发距离 | pullStop + 90（240px） | pullStop + 310（460px） |
 | 弹幕存活时间 | 4.5s | 5.5s（射程约 1320px） |
 - 实测：400px 处 1.4 秒生成 11 发弹幕；900px 处不再发弹幕；1084px / 1500px 处引力均能触发
+
+
+## M14（commit 4ab3e7f，2026-10-27）微信登录云服务排障 + 加固
+### 根因（三层，逐层实测确认）
+1. `CLOUD` 初始化里 `endpoint` 写死旧域名 `https://shenjin-seal.app.workbuddy.host`，
+   而线上已经迁到 `https://seal-battle.app.workbuddy.host`
+2. 云网关按 **Origin 精确校验**（publishableKey 绑定到具体应用），curl 对照实验：
+   | 请求地址 | Origin | 结果 |
+   |---|---|---|
+   | 旧域名 | 旧域名 | 401 unauthenticated（正常，只是没登录） |
+   | 旧域名 | seal-battle | **403 `the request origin is not allowed for this client`** |
+   | seal-battle | seal-battle | **403 同上** |
+   → 也就是说换域名后 **手机号登录 / 注册 / 验证码 / 排行榜 / 无尽成绩上报 全部静默失败**，
+     不只是微信登录
+3. 微信登录另有一层：OAuth 中转站
+   `GET https://www.workbuddy.cn/v2/as/genie-baas/oauth/authorize?provider=wechat&callback_url=...`
+   - callback_url = 旧域名 → 302 到 `open.weixin.qq.com/connect/qrconnect`（微信渠道是通的）
+   - callback_url = seal-battle → **409 `the application of this callback_url has no cloud service bound`**
+   - callback_url = 本地地址 → 400（中转站只接受已发布应用的 https 地址）
+   → `workbuddy_cloud_service` inspect 结果：`wbapp_Tt91MUdDGiyCqUq1NXpORo` = `never_enabled`
+   → **当前线上应用从来没开通过云服务**，这是微信登录不可用的真正原因
+
+### 代码改动（不依赖开通即可上线，开通后立即生效）
+1. 删掉硬编码 `endpoint`，交给 SDK 回落到 `location.origin`（换域名/本地预览都不会指错后端）
+2. 新增 `cloudErrText()`：401/403 origin 不匹配 → 「云服务未就绪」；409 未绑云服务 → 「微信登录未开通」；
+   本地地址 → 「本地预览不支持微信登录」；超时 → 「网络超时」
+3. 新增 `wxPreflight()`：跳转微信前先 `fetch(url, {redirect:'manual'})` 预检授权地址
+   （中转站 `Access-Control-Allow-Origin: *`，能读到错误体）；
+   正常 302 → `opaqueredirect` 放行，409/400 → 直接把原因显示在登录弹窗，
+   不再把用户甩到一页 JSON 报错上
+4. 回跳分支按 provider 分流：`provider=wechat` → `handleWechatWebCallback()`；
+   `provider_id=custom-oauth` → `handleOAuthCallback()`
+   （SDK 明确禁止用前者处理后者，原来混在一起会自己报错）
+5. 手机号登录 / 注册 / 验证码错误也走 `cloudErrText`
+6. 调试出口新增 `cloudErrText` / `wxPreflight` / `cloudEndpoint`
+
+### 实测（本地 127.0.0.1:8899 + agent-browser）
+- `cloudEndpoint` = `http://127.0.0.1:8899/.cloud/auth`（正确回落到同源）
+- `cloudErrText` 三条映射全部正确
+- 点「微信登录」→ 弹窗显示「微信登录暂不可用：本地预览不支持微信登录，请用线上地址打开」，
+  按钮恢复可点、页面未跳转
+
+### 待办（阻塞项，需要用户操作）
+**必须在 WorkBuddy 的开通确认弹窗里点「同意」**，给 `wbapp_Tt91MUdDGiyCqUq1NXpORo` 开通云服务；
+两次调用 `workbuddy_cloud_service activate` 均返回 `cancelled: true`（确认框被取消）。
+开通完成后需要拿新的 `publicConfig.publishableKey` 回填 `CLOUD` 初始化，否则 Origin 仍然对不上。
