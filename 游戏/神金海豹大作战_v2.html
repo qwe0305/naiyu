@@ -1167,7 +1167,12 @@ const MATH3 = {
   pullStop: 150,      // 拉到距离 Boss 这么近停住（"课本"范围）
   danmakuCd: 2,       // 弹幕波次间隔（M11：1.6 → 2.0）
   danmakuDmg: 7,      // 每个积分号伤害（M11：10 → 7）
-  danmakuSpd: 240     // 弹幕速度
+  danmakuSpd: 240,    // 弹幕速度
+  /* M13：用户反馈高数两个技能作用范围太小 —— 引力覆盖半张地图 → 0.85 张，
+     弹幕触发距离 240px → 460px，弹幕飞行时间也加长（射程更远） */
+  pullRange: .85,     // 引力作用半径 = max(W,H) * pullRange（原写死 .5）
+  danmakuRange: 310,  // 弹幕触发距离 = pullStop + 该值（原 90）
+  danmakuLife: 5.5    // 弹幕存活时间（原 4.5，射程 240*5.5≈1320px）
 };
 
 /* ---- M2：函数轨迹目录（高数压轴） --------------------------------------
@@ -2376,10 +2381,11 @@ function updateBossOne(B, dt) {
        ① 函数线条把玩家持续拉过来（拉拽期间每秒扣 5 滴），攻击范围为半个地图；
           只有「玩家受到攻击」或「玩家离开攻击范围」时才会停止；
        ② 玩家被拉近"课本"（Boss 本体）附近后改发弹幕：
-          积分号贴图横着发出、飞行中 360° 旋转、碰到扣 10 滴。 */
+          积分号贴图横着发出、飞行中 360° 旋转、碰到扣 7 滴。
+       M13：引力覆盖 0.85 张地图、弹幕触发距离 460px（原半张图 / 240px）。 */
     const pd = Math.hypot(player.x - B.x, player.y - B.y);
-    /* 半个地图 = 世界对角线的一半（按当前视野推算，兼容任意分辨率） */
-    const halfMap = Math.max(W, H) * .5;
+    /* M13：引力覆盖范围 = 视野长边 × pullRange（原写死半张图），作用范围明显变大 */
+    const halfMap = Math.max(W, H) * (MATH3.pullRange || .5);
     if (B.beam) {
       /* 拉拽中：持续把玩家朝 Boss 拽；受伤标记/超范围则中断 */
       const dx = B.x - player.x, dy = B.y - player.y, d = Math.hypot(dx, dy) || 1;
@@ -2403,8 +2409,8 @@ function updateBossOne(B, dt) {
         sfx(150, .5, 'sawtooth', .1, 45);
       }
     }
-    /* 弹幕：玩家靠近课本时触发，横着发一排积分号 */
-    if (pd < MATH3.pullStop + 90) {
+    /* 弹幕：玩家进入课本射程就触发，横着发一排积分号（M13：触发距离 240 → 460px） */
+    if (pd < MATH3.pullStop + MATH3.danmakuRange) {
       B.danT -= dt;
       if (B.danT <= 0) {
         B.danT = MATH3.danmakuCd;
@@ -2414,7 +2420,7 @@ function updateBossOne(B, dt) {
           for (const s of [-1, 1]) {
             V.bullets.push({
               x: B.x, y, vx: s * side, vy: rnd(-18, 18),
-              r: 13, sp: side, dmg: MATH3.danmakuDmg, life: 4.5, homing: false,
+              r: 13, sp: side, dmg: MATH3.danmakuDmg, life: MATH3.danmakuLife || 4.5, homing: false,
               c: '#9fe0ff', integral: true, spin: rnd(0, TAU), spinV: (4.2 + rnd(0, 1.4)) * (Math.random() < .5 ? -1 : 1)
             });
           }
