@@ -18,13 +18,15 @@ const CSS = `
 #v2hud b{color:#ffd54a;font-size:15px}
 #lvt{display:inline-block;background:linear-gradient(90deg,#ffd54a,#ff9d2e);color:#3a2400;border-radius:99px;
   padding:0 6px;font-size:10px;font-weight:900;margin-left:4px;vertical-align:1px}
-#bossbar{position:fixed;top:92px;left:50%;transform:translateX(-50%);width:min(460px,82vw);z-index:6;
+#bossbar{position:fixed;top:8px;left:50%;transform:translateX(-50%);width:min(460px,82vw);z-index:6;
   opacity:0;transition:opacity .3s;pointer-events:none}
 #bossbar.on{opacity:1}
 #bossbar .nm{display:flex;justify-content:space-between;font-size:12px;color:#fff;text-shadow:0 1px 3px #000;margin-bottom:3px}
 #bossbar .nm .tag{color:#ffb3c1}
-#bossbar .bar{height:12px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);overflow:hidden}
+#bossbar .bar{position:relative;height:15px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);overflow:hidden}
 #bossbar .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff9d2e,#ff3b3b);transition:width .25s}
+#bossbar .bar .bnum{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:900;
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 4px rgba(0,0,0,.7);letter-spacing:.5px}
 #dashbtn{position:fixed;right:18px;bottom:26px;width:76px;height:76px;border-radius:50%;
   display:grid;place-items:center;line-height:1.15;text-align:center;z-index:7;cursor:pointer;
   background:radial-gradient(circle at 35% 30%,rgba(120,220,255,.45),rgba(6,40,61,.9));
@@ -35,6 +37,17 @@ const CSS = `
 #dashbtn.cd{opacity:.45}
 #dashbtn.cd b{font-size:20px;color:#9fb4c7;letter-spacing:0}
 #dashbtn:active{transform:scale(.93)}
+/* M5：旋转水波技能按钮（冲刺按钮上方） */
+#spinbtn{position:fixed;right:18px;bottom:118px;width:64px;height:64px;border-radius:50%;
+  display:grid;place-items:center;line-height:1.15;text-align:center;z-index:7;cursor:pointer;
+  background:radial-gradient(circle at 35% 30%,rgba(110,231,160,.45),rgba(6,40,61,.9));
+  border:2px solid rgba(110,231,160,.6);backdrop-filter:blur(8px);box-shadow:0 8px 22px rgba(0,0,0,.35);
+  user-select:none;-webkit-user-select:none;transition:transform .1s, opacity .2s}
+#spinbtn b{font-size:15px;color:#eaf7ff;letter-spacing:2px}
+#spinbtn span{font-size:9px;color:#8fe6b5;letter-spacing:1px}
+#spinbtn.cd{opacity:.45}
+#spinbtn.cd b{font-size:18px;color:#9fc7b4;letter-spacing:0}
+#spinbtn:active{transform:scale(.93)}
 /* 面板可滚动：原版给 html,body 设了 touch-action:none + overflow:hidden，这里在面板打开时放开 */
 html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavior:none}
 .v2ov{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;
@@ -84,9 +97,8 @@ html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavi
 @keyframes v2pop{from{transform:translateY(10px) scale(.92);opacity:0}}
 @keyframes v2fade{0%,72%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
 #shopBtn{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:12}
-/* ---- 血量移到左下角：避免与右上角设置按钮重叠 ---- */
-#lives{position:fixed;left:12px;bottom:26px;font-size:24px;letter-spacing:2px;z-index:6;
-  text-shadow:0 1px 4px rgba(0,0,0,.6)}
+/* ---- 血量移到左下角：M4 改为血条 —— 原版红心整块隐藏，由 #hpbox 接管 ---- */
+#lives{display:none !important}
 /* ---- 设置按钮（右上角齿轮，符合主流游戏惯例） ---- */
 #setBtn{position:fixed;top:10px;right:12px;width:38px;height:38px;border-radius:50%;z-index:15;cursor:pointer;
   display:grid;place-items:center;font-size:20px;color:#fff;
@@ -193,6 +205,26 @@ html.v2scroll,html.v2scroll body{touch-action:pan-y !important;overscroll-behavi
 #diffPanel .dbtn[data-d="easy"]{background:linear-gradient(180deg,#fff6c9,#ffe98a)}
 #diffPanel .dbtn[data-d="hard"]{background:linear-gradient(180deg,#ffd54a,#ffb02e)}
 #diffPanel .dbtn[data-d="hell"]{background:linear-gradient(180deg,#ff9d2e,#ff7a1a);color:#3d2200}
+/* M4：玩家血条（左下角） */
+#hpbox{position:fixed;left:12px;bottom:16px;z-index:6;width:min(240px,44vw);pointer-events:none;
+  opacity:0;transition:opacity .3s}
+#hpbox.on{opacity:1}
+#hpbox .hptop{display:flex;justify-content:space-between;font-size:12px;font-weight:800;color:#fff;
+  text-shadow:0 1px 3px rgba(0,0,0,.7);margin-bottom:3px}
+#hpbox .hptop b{color:#ff5b6a}
+#hpbox .hpbar{position:relative;height:16px;border-radius:99px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.3);
+  overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+#hpbox .hpbar i{display:block;height:100%;width:100%;border-radius:99px;
+  background:linear-gradient(90deg,#ff5b6a,#ff9d2e);transition:width .25s}
+/* 血条内嵌数字：白字 + 描边，保证任何血量色底都清晰 */
+#hpbox .hpnum{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:900;
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 4px rgba(0,0,0,.7);letter-spacing:.5px}
+#upbox{position:fixed;left:12px;bottom:52px;z-index:6;display:flex;gap:4px;pointer-events:none;flex-wrap:wrap;
+  max-width:min(300px,60vw)}
+#upbox .upic{width:22px;height:22px;border-radius:6px;background:rgba(4,30,48,.6);
+  border:1px solid rgba(255,213,74,.5);display:grid;place-items:center;font-size:12px;color:#ffd54a;
+  text-shadow:0 0 4px rgba(255,213,74,.6)}
+#upbox .upic span{font-size:9px;color:#fff;margin-left:1px}
 `;
 const _st = document.createElement('style'); _st.textContent = CSS; document.head.appendChild(_st);
 
@@ -211,8 +243,9 @@ function toast(msg, gold) {
   setTimeout(() => d.remove(), 2500);
 }
 
-/* 扩展音效：复用原版 AudioContext，不干扰原版 beep */
-const SFX_VOL = .55;      // 合成音效统一音量系数（整体压小）
+/* 扩展音效：复用原版 AudioContext，不干扰原版 beep
+   音量系数恢复为 1（原先把整体压到 .55，导致扩展音效听起来"没声音"） */
+const SFX_VOL = 1;
 
 /* ---- 设置：全局音量 + 怪物生成速度乘区（独立于难度） --------------------- */
 const SETKEY = 'sealV2Set';
@@ -240,6 +273,37 @@ function sfx(freq, dur, type, vol, slideTo) {
   } catch (e) { }
 }
 
+/* M5c：音频解锁 —— 浏览器/微信强制要求「用户手势」后才能出声。
+   原版没有这段逻辑，导致手机上首次点击前 AudioContext 处于 suspended、
+   new Audio().play() 被静默拒绝 —— 表现就是「音效没了」。
+   这里在首次任意手势时 resume 音频上下文，并预播一个静音样本打通播放权限。 */
+let _audioUnlocked = false;
+function unlockAudio() {
+  if (_audioUnlocked) return;
+  _audioUnlocked = true;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended' && actx.resume) actx.resume();
+  } catch (e) { }
+  try {
+    /* 用 0 音量的极短样本「预热」HTMLAudio 播放权限（iOS/微信必需） */
+    const a = new Audio(EAT_SOUNDS[0]);
+    a.volume = 0;
+    const pr = a.play();
+    if (pr && pr.then) pr.then(() => { try { a.pause(); } catch (e) { } }).catch(() => { });
+  } catch (e) { }
+}
+['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach(ev =>
+  addEventListener(ev, unlockAudio, { once: false, passive: true }));
+
+/* 开局音效：三声上行音阶（520 → 660 → 880 Hz），比死亡/胜利音更亮，作为开局提示 */
+function playStartJingle() {
+  if (GAME_VOL <= 0) return;
+  sfx(520, .12, 'triangle', .18);
+  setTimeout(() => sfx(660, .12, 'triangle', .18), 110);
+  setTimeout(() => sfx(880, .22, 'triangle', .2), 220);
+}
+
 /* Boss 出场音效：来自抖音「原声」链接（2.7 秒，已内联为 base64） */
 let _bossVoice = null;
 function playBossVoice() {
@@ -251,14 +315,57 @@ function playBossVoice() {
     if (pr && pr.catch) pr.catch(() => { });
   } catch (e) { }
 }
-
 /* ------------------------------------------------------------ 2. 存档 */
-const SKEY = 'sealV2';
+/* M8 存档健壮性加固：
+   1) 双键备份 —— 主键写失败（配额满/隐私模式）自动落备份键，读时主键损坏回退备份键
+   2) 版本号 —— 存档带 v 字段，读档校验结构（coins 非数字等）自动修复默认值
+   3) 写入防抖 —— saveS 高频调用时 300ms 合并成一次真实 IO
+   4) 兜底时机 —— 页面隐藏/关闭时立即 flush，结算/购买不丢档 */
+const SKEY = 'sealV2', SKEY_BAK = 'sealV2_bak', SVER = 3;
+const S_DEFAULT = { coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 };
+function m8SanitizeS(raw) {
+  const s = Object.assign({}, S_DEFAULT, raw && typeof raw === 'object' ? raw : {});
+  if (!Array.isArray(s.owned) || !s.owned.length) s.owned = ['classic'];
+  if (typeof s.coins !== 'number' || !isFinite(s.coins) || s.coins < 0) s.coins = 0;
+  if (typeof s.equipped !== 'string' || !s.equipped) s.equipped = 'classic';
+  if (typeof s.bossKilled !== 'number' || !isFinite(s.bossKilled) || s.bossKilled < 0) s.bossKilled = 0;
+  s.v = SVER;
+  return s;
+}
+function m8ReadKey(k) {
+  try {
+    const t = localStorage.getItem(k);
+    if (!t) return null;
+    const o = JSON.parse(t);
+    return (o && typeof o === 'object') ? o : null;
+  } catch (e) { return null; }
+}
 let S = (function () {
-  try { return Object.assign({ coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 }, JSON.parse(localStorage.getItem(SKEY) || '{}')); }
-  catch (e) { return { coins: 0, owned: ['classic'], equipped: 'classic', bossKilled: 0 }; }
+  /* 主键 → 备份键 → 默认值，逐级回退 */
+  const raw = m8ReadKey(SKEY) || m8ReadKey(SKEY_BAK);
+  return m8SanitizeS(raw);
 })();
-const saveS = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch (e) { } };
+let _sSaveTimer = null, _sDirty = false;
+function m8WriteNow() {
+  const body = JSON.stringify(S);
+  let ok = false;
+  try { localStorage.setItem(SKEY, body); ok = true; } catch (e) { }
+  if (!ok) {                                   // 主键失败（配额/隐私模式）→ 落备份键
+    try { localStorage.setItem(SKEY_BAK, body); ok = true; } catch (e) { }
+  } else {
+    try { localStorage.setItem(SKEY_BAK, body); } catch (e) { }   // 正常时也同步备份
+  }
+  _sDirty = false;
+}
+const saveS = () => {
+  _sDirty = true;
+  if (_sSaveTimer) return;
+  _sSaveTimer = setTimeout(() => { _sSaveTimer = null; m8WriteNow(); }, 300);
+};
+/* 页面隐藏/关闭：立即落盘，防止杀后台丢档 */
+document.addEventListener('visibilitychange', () => { if (document.hidden && _sDirty) m8WriteNow(); });
+window.addEventListener('pagehide', () => { if (_sDirty) m8WriteNow(); });
+setInterval(() => { if (_sDirty) m8WriteNow(); }, 10000);    /* 长局保险丝 */
 
 /* ------------------------------------------------------------ 2.5 云服务：登录 + 排行榜 */
 const CLOUD = (typeof WorkBuddyCloud !== 'undefined' && WorkBuddyCloud.createWorkBuddyCloud)
@@ -284,17 +391,31 @@ const saveP = () => { try { localStorage.setItem(PKEY, JSON.stringify(P)); } cat
 function myDisplayName() { return (P.name || (cloudUser && cloudUser.name) || '玩家').slice(0, 12); }
 function myAvatar() { return P.avatar || (cloudUser && cloudUser.avatarUrl) || ''; }
 
+/* M8 云健壮性：网络请求加超时保护（弱网下 getSession/report 可能挂起几十秒） */
+function cloudTimeout(promise, ms, tag) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(tag + ' timeout')), ms || 8000))
+  ]);
+}
+
 async function refreshCloudUser() {
   if (!CLOUD) return;
   try {
-    const { data: s, error } = await CLOUD.auth.getSession();
+    const { data: s, error } = await cloudTimeout(CLOUD.auth.getSession(), 8000, 'getSession');
     if (error || !s) { cloudUser = null; return; }
     const u = s.user || {};
     cloudUser = { id: u.id, name: u.name || '玩家', avatarUrl: u.avatarUrl || null };
     // 云端若返回了昵称/头像而本地还没有，就先采用
     if (u.name && !P.name) { P.name = u.name; saveP(); }
     if (u.avatarUrl && !P.avatar) { P.avatar = u.avatarUrl; saveP(); }
-  } catch (e) { cloudUser = null; }
+  } catch (e) { cloudUser = null; }   /* 超时/断网：静默降级为未登录，不阻塞游戏 */
+}
+/* 登录状态变化时同步 cloudUser（其他标签页登录/登出、token 刷新失败等场景） */
+if (CLOUD && CLOUD.auth && CLOUD.auth.onAuthStateChange) {
+  try {
+    CLOUD.auth.onAuthStateChange(() => { refreshCloudUser().then(renderLoginBadge); });
+  } catch (e) { }
 }
 
 // 登录弹窗（手机号 + 密码，游戏内完成，不跳转外站）
@@ -322,6 +443,7 @@ function openLogin() {
     '  </div>' +
     '  <div class="loginErr" id="liErr"></div>' +
     '  <button class="v2btn" id="liGo">登录</button>' +
+    '  <button class="v2btn" id="liWx" style="background:linear-gradient(180deg,#3ddc84,#1fb25e);margin-top:8px">微信登录</button>' +
     '  <button class="v2btn" id="liClose">返回</button>' +
     '</div>';
   document.body.appendChild(ov);
@@ -349,6 +471,24 @@ function openLogin() {
   ov.querySelectorAll('.login-tab').forEach(t => t.onclick = () => switchTab(t.dataset.t));
   ov.querySelector('#liClose').onclick = () => { ov.classList.add('hidden'); document.documentElement.classList.remove('v2scroll'); };
   phone.addEventListener('input', () => err(''));
+
+  /* M8：微信登录 —— 跳转微信授权（由云服务 OAuth 中转站托管），回跳后自动换取会话 */
+  ov.querySelector('#liWx').onclick = async () => {
+    err('');
+    if (!CLOUD || !CLOUD.auth.signInWithOAuth) { err('当前环境不支持微信登录'); return; }
+    const wxBtn = ov.querySelector('#liWx');
+    wxBtn.disabled = true;
+    try {
+      const redirectTo = location.origin + location.pathname;
+      const r = await cloudTimeout(CLOUD.auth.signInWithOAuth({ provider: 'wechat', redirectTo }), 12000, 'wx');
+      if (r && r.error) { err('微信登录暂不可用：' + (r.error.message || '服务端未配置微信渠道')); wxBtn.disabled = false; return; }
+      /* 成功时 SDK 已重定向（或返回授权 URL），这里兜底手动跳 */
+      if (r && r.data && r.data.url) location.href = r.data.url;
+    } catch (e) {
+      err('微信登录暂不可用（' + (e.message || '网络异常') + '）');
+      wxBtn.disabled = false;
+    }
+  };
 
   // 发送验证码（注册用）
   sendBtn.onclick = async () => {
@@ -414,11 +554,11 @@ async function cloudLogout() {
   renderLoginBadge();
 }
 
-// 无尽成绩上报（已登录才上报；每玩家只保留历史最佳）
-async function reportEndlessScore(star, surviveSec, bossProgress) {
+// 无尽成绩上报（已登录才上报；每玩家只保留历史最佳；M8：失败自动重试 1 次）
+async function reportEndlessScore(star, surviveSec, bossProgress, _retry) {
   if (!CLOUD || !cloudUser) return;
   try {
-    const { data: s } = await CLOUD.auth.getSession();
+    const { data: s } = await cloudTimeout(CLOUD.auth.getSession(), 8000, 'report.getSession');
     if (!s) return;
     const name = myDisplayName();
     const avatar = myAvatar();
@@ -438,7 +578,10 @@ async function reportEndlessScore(star, surviveSec, bossProgress) {
         owner_name: name, avatar_url: avatar, best_star: star, best_survive: surviveSec, boss_progress: bossProgress
       });
     }
-  } catch (e) { /* 上报失败静默，不影响游戏 */ }
+  } catch (e) {
+    /* M8：失败自动重试 1 次（弱网下首次请求常被掐断），仍失败则静默 */
+    if (!_retry) { setTimeout(() => { try { reportEndlessScore(star, surviveSec, bossProgress, true); } catch (e2) { } }, 4000); }
+  }
 }
 
 // 读取排行榜（公开读）
@@ -531,26 +674,41 @@ const UPGRADES = [
   { id: 'magnet', ic: '◎', name: '吸星',     d: '附近小鱼自动被吸过来' },
   { id: 'devour', ic: '▲', name: '暴食',     d: '能吃掉更大的奶龙' },
   { id: 'combo',  ic: '✦', name: '连击大师', d: '吃鱼积分 ×2 / ×3 / ×4' },
-  { id: 'vigor',  ic: '✚', name: '铁壁',     d: '生命立刻回满 + 5 秒无敌' },
-  { id: 'charge', ic: '↻', name: '闪充',     d: '冲刺冷却 −2 秒' },
-  { id: 'harvest', ic: '✳', name: '丰收',    d: '每次吃鱼额外 +1 经验' }
+  { id: 'vigor',  ic: '✚', name: '疗愈',     d: '立刻回复 30 滴血 + 3 秒无敌' },
+  { id: 'charge', ic: '↻', name: '闪充',     d: '技能冷却 −2 秒' },
+  { id: 'harvest', ic: '✳', name: '丰收',    d: '每次吃鱼额外 +1 经验' },
+  { id: 'wave',   ic: '〜', name: '水波强化', d: '水波每次伤害 +7 滴' }
 ];
 
 let V = null;   // v2 局内状态
 let GAME_MODE = 'normal';   // 'normal' | 'endless'（普通 / 无尽）
 let CUR_DIFF = 'hard';      // 当前难度键 'easy' | 'hard' | 'hell'（无尽模式积分倍率用）
+/* M4：各难度初始血量（M5c 改：统一 100 滴，难度只影响积分/成长不影响血量） */
+const DIFF_HP = { easy: 100, hard: 100, hell: 100 };
+function diffStartHp() {
+  return DIFF_HP[CUR_DIFF] || 100;
+}
 function newV() {
+  const hp0 = diffStartHp();
   V = {
     lvl: 1, exp: 0, expNeed: 10, pendingLv: 0,
-    up: { giant: 0, swift: 0, magnet: 0, devour: 0, combo: 0, charge: 0, harvest: 0 },
+    up: { giant: 0, swift: 0, magnet: 0, devour: 0, combo: 0, charge: 0, harvest: 0, wave: 0 },
     coinsRun: 0, combo: 0, comboT: 0, maxCombo: 0,
+    hp: hp0, maxHp: hp0,          /* M4：血量制生命（M5c 统一 100 滴） */
     dashT: 0, dashCd: 0, dashX: 1, dashY: 0,
+    spinT: 0, spinCd: 0,            /* M5：旋转水波技能（动画剩余时间 / 冷却） */
     eatCount: 0,
     bosses: [], bossIdx: -1, bossDone: 0, trig: [false, false, false],
     endless: { star: 0, round: 0, roundDone: 0, lastPick: -1, active: false, pendingWave: 0, nextWaveAt: 0 },
-    bullets: [], waves: [], snakes: [], parts: [],
+    bullets: [], waves: [], curves: [], parts: [],
+    mathFn: -1,   /* M2：高数 Boss 当前循环的函数编号（-1 = 尚未随机） */
     prevScore: 0, prevLives: (typeof lives === 'number' ? lives : 3),
-    hurtFlash: 0, surviveT: 0
+    hurtFlash: 0, surviveT: 0,
+    /* M6：皮肤专属技能状态（道具动画 / 护盾 / 缩小 / 气泡 / 弹丸） */
+    m6Item: null, m6Shield: 0, m6ShieldFx: 0, m6ShrinkT: 0, m6BubbleT: 0,
+    m6Shots: [], m6MinR: 26, m6PreR: 26,
+    m6ClearT: 0, m6ClearR: 0,  /* M7：wjh 清屏冲击环剩余时间 / 半径 */
+    clearCd: 0                 /* M7：清屏独立冷却（60 秒） */
   };
 }
 newV();
@@ -559,14 +717,59 @@ newV();
 const BOSS_SIZE = 112;          // 三个 Boss 体型统一
 const BOSS_DEFS = [
   { key: 'dj', name: '袋鼠 DJ', sub: '音响三兄弟', orb: '音响', orbIc: '♪', orbC: '#ff4d6d',
-    sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 8, reward: 100, orbCoin: 30,
+    sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 14, hp: 80, reward: 100, orbCoin: 30,
     line: '◆ 袋鼠 DJ 登场！吃掉它的 3 个音响！' },
-  { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣包', orbIc: '◆', orbC: '#ff3b30',
-    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 9, reward: 200, orbCoin: 50,
-    line: '◆ 魔芋爽辣王来了！吃掉它的 3 个辣包！' },
-  { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '答案卷', orbIc: '■', orbC: '#4cc9f0',
-    sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 3.1, atk: 'snake', dmg: 10, reward: 300, orbCoin: 80,
-    line: '◆ 高数压轴登场！小心它的函数线！' }
+  { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣条', orbIc: '🌶', orbC: '#ff3b30',
+    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 7, hp: 120, reward: 200, orbCoin: 50,
+    line: '◆ 魔芋爽辣王来了！用旋转水波打掉它的 120 血！' },
+  { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '课本', orbIc: '📖', orbC: '#4cc9f0',
+    sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 7, hp: 160, reward: 300, orbCoin: 80,
+    line: '◆ 高数压轴登场！小心它的函数引力线！撞掉它的 160 血！' }
+];
+/* ---- M2：辣条子弹贴图（V2_LATIAO_SRC 由 HTML 素材块注入） ---- */
+const LATIAO_IMG = new Image();
+if (typeof V2_LATIAO_SRC === 'string' && V2_LATIAO_SRC) LATIAO_IMG.src = V2_LATIAO_SRC;
+
+/* ---- M4：Boss3 重做 —— 积分号弹幕贴图 + 拉人/弹幕参数 ------------------
+   技能循环：函数线条把玩家从远处拉过来（拉拽期间每秒扣 5 滴），
+   玩家被拉近 Boss（靠近"课本"= Boss 本体一定范围）后 Boss 改发弹幕：
+   积分号贴图横着发出、360° 旋转、碰到扣 10 滴。 */
+const INTEGRAL_IMG = new Image();
+if (typeof V2_INTEGRAL_SRC === 'string' && V2_INTEGRAL_SRC) INTEGRAL_IMG.src = V2_INTEGRAL_SRC;
+const MATH3 = {
+  beamCd: 6,          // 拉人技能冷却（秒）
+  beamSpeed: 150,     // 拉拽速度（px/s，放慢 → 拉拽时间更长，每秒扣血累计更多）
+  beamDps: 4,         // 拉拽期间每秒扣血（M11：5 → 4）
+  pullStop: 150,      // 拉到距离 Boss 这么近停住（"课本"范围）
+  danmakuCd: 2,       // 弹幕波次间隔（M11：1.6 → 2.0）
+  danmakuDmg: 7,      // 每个积分号伤害（M11：10 → 7）
+  danmakuSpd: 240     // 弹幕速度
+};
+
+/* ---- M2：函数轨迹目录（高数压轴） --------------------------------------
+   每次攻击若尚未选函数则随机取一个，之后一直循环同一条函数图像。
+   pts 为归一化采样点（最大半径≈1），step 为平均段长（推进用）。 ---- */
+function _fnSample(n, f, scale) {
+  const p = [];
+  for (let i = 0; i <= n; i++) {
+    const v = f(i / n);
+    p.push([v[0] * scale, v[1] * scale]);
+  }
+  let step = 0;
+  for (let i = 1; i < p.length; i++) step += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+  return { pts: p, step: step / n };
+}
+const FN_CURVES = [
+  { name: '阿基米德螺线', s: _fnSample(300, k => { const th = k * 6 * Math.PI, r = k; return [Math.cos(th) * r, Math.sin(th) * r]; }, 1) },
+  { name: '对数螺线', s: _fnSample(300, k => { const th = k * 4 * Math.PI, r = Math.exp(1.25 * k) / Math.exp(1.25); return [Math.cos(th) * r, Math.sin(th) * r]; }, 1) },
+  { name: '双曲螺线', s: _fnSample(300, k => { const th = .55 + k * (6 * Math.PI - .55), r = .55 / th; return [Math.cos(th) * r, Math.sin(th) * r]; }, 1) },
+  { name: '圆的渐开线', s: _fnSample(260, k => { const t = k * 2 * Math.PI, d = 2 * Math.PI; return [(Math.cos(t) + t * Math.sin(t)) / d, (Math.sin(t) - t * Math.cos(t)) / d]; }, 1) },
+  { name: '摆线（旋轮线）', s: _fnSample(320, k => { const t = k * 4 * Math.PI; return [(t - Math.sin(t)) / (4 * Math.PI) - .5, (1 - Math.cos(t)) / 2 - .5]; }, 1.6) },
+  { name: '星形线', s: _fnSample(260, k => { const t = k * 2 * Math.PI; return [Math.pow(Math.cos(t), 3), Math.pow(Math.sin(t), 3)]; }, 1) },
+  { name: '三叶玫瑰线', s: _fnSample(240, k => { const t = k * Math.PI, r = Math.cos(3 * t); return [Math.cos(t) * r, Math.sin(t) * r]; }, 1) },
+  { name: '四叶玫瑰线', s: _fnSample(280, k => { const t = k * 2 * Math.PI, r = Math.sin(2 * t); return [Math.cos(t) * r, Math.sin(t) * r]; }, 1) },
+  { name: '双纽线', s: (function () { const p = []; for (let i = 0; i <= 160; i++) { const th = -Math.PI / 4 + i / 160 * (Math.PI / 2), r = Math.sqrt(Math.max(0, Math.cos(2 * th))); p.push([Math.cos(th) * r, Math.sin(th) * r]); } for (let i = 0; i <= 160; i++) { const th = 3 * Math.PI / 4 + i / 160 * (Math.PI / 2), r = Math.sqrt(Math.max(0, -Math.cos(2 * th))); p.push([Math.cos(th) * r, Math.sin(th) * r]); } let st = 0; for (let i = 1; i < p.length; i++) st += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]); return { pts: p, step: st / p.length }; })() },
+  { name: '心脏线', s: _fnSample(280, k => { const t = k * 2 * Math.PI, r = 1 - Math.cos(t); return [Math.cos(t) * r / 2, Math.sin(t) * r / 2]; }, 1) }
 ];
 const _bossImgCache = {};
 function bossImg(def) {
@@ -590,11 +793,18 @@ hud2.innerHTML =
 document.body.appendChild(hud2);
 const bossbar = el('div', 'bossbar');
 bossbar.innerHTML = '<div class="nm"><span id="bbname">Boss</span><span class="tag" id="bbtag">剩 3 / 3</span></div>' +
-  '<div class="bar"><i id="bbfill"></i></div>';
+  '<div class="bar"><i id="bbfill"></i><span class="bnum" id="bbnum">100 / 100</span></div>';
 document.body.appendChild(bossbar);
-const dashbtn = el('div', 'dashbtn', null, '<div style="display:grid;place-items:center"><b>冲刺</b><span>双击屏幕</span></div>');
+const dashbtn = el('div', 'dashbtn', null, '<div style="display:grid;place-items:center"><b>冲刺</b><span>双击/点此</span></div>');
 document.body.appendChild(dashbtn);
 document.body.appendChild(el('div', 'v2toast'));
+/* M4：玩家血条 + 进化技能栏（左下角） */
+const hpbox = el('div', 'hpbox');
+hpbox.innerHTML = '<div class="hptop"><span>生命</span><b id="hpnum">100 / 100</b></div>' +
+  '<div class="hpbar"><i id="hpfill"></i><span class="hpnum" id="hpnum2">100 / 100</span></div>';
+document.body.appendChild(hpbox);
+const upbox = el('div', 'upbox');
+document.body.appendChild(upbox);
 
 // 开始界面加「皮肤商店」按钮
 const shopBtn = el('button', 'shopBtn', 'v2btn ghost', '◉ 皮肤商店');
@@ -1037,7 +1247,7 @@ function clickSkin(id) {
 /* ------------------------------------------------------------ 7. 冲刺 */
 const DASH_INVULN = 3000;      // 冲刺无敌时长（3 秒）
 let lastTap = 0;
-function tryDash() {
+function tryDashCore() {
   if (state !== 'playing' || !V) return;
   if (V.dashCd > 0) return;
   let dx = 0, dy = 0;
@@ -1054,6 +1264,319 @@ function tryDash() {
   }
 }
 dashbtn.onclick = tryDash;
+
+/* ============================================================ 12. M6 皮肤专属技能
+   双击/冲刺按钮按所装备皮肤替换为专属技能（其他皮肤保持原版冲刺）：
+   - 魔芋爽：掏出魔芋串吃掉 → 回 10 滴血（吃东西音效）
+   - 冰红茶：掏出冰红茶喝掉 → 回 20 滴血（喝东西音效）
+   - 乐事薯片：举薯片护盾 → 挡下下一次攻击（薯片碎音效）
+   - 线性代数：头顶居中靠上冒出白底黑字气泡「QᴧQᵀ难。。我大脑要变小脑了」→ 缩成地图最小体型 10 秒
+   - 嘉豪：拿枪射击最近 Boss → 一次 −10（开枪音效）
+   - 奶鱼：拿金叉子射击最近 Boss → 一次 −15
+   - 香蕉：扔香蕉砸最近 Boss → 一次 −20（扔东西音效）
+   道具贴图大小约为玩家半个身子；冷却与原版冲刺共用（10 秒，闪充可减）。 */
+const M6_SRC = window.V2_M6_SRC || {};
+const M6_IMG = {};
+for (const k in M6_SRC) { const im = new Image(); im.src = M6_SRC[k]; M6_IMG[k] = im; }
+
+const M6_SKILLS = {
+  moyushuang:    { kind: 'heal',  heal: 10, item: 'moyu',   snd: 'eat',   btn: '吃魔芋' },
+  binghongcha:   { kind: 'heal',  heal: 20, item: 'icetea', snd: 'drink', btn: '喝红茶' },
+  leshi:         { kind: 'shield',                                        btn: '薯片盾' },
+  xiandaishuxue: { kind: 'shrink',                                        btn: '变小' },
+  jiahao:        { kind: 'shoot', dmg: 15, item: 'gun',    snd: 'gun',   btn: '射击' },
+  naiyu:         { kind: 'shoot', dmg: 20, item: 'fork',   snd: 'gun',   btn: '叉击' },
+  xiangjiao:     { kind: 'shoot', dmg: 25, item: 'banana', snd: 'throw', btn: '扔香蕉' },
+  wjh:           { kind: 'clear',                                        btn: '清屏' }
+};
+
+/* M6 音效合成（WebAudio 现场合成，无需外链素材）：
+   噪声爆发 = 枪声 / 薯片碎；三连下滑音 = 咕嘟喝水；扫频+气流 = 扔出 */
+function playNoise(dur, vol, fc) {
+  try {
+    if (GAME_VOL <= 0) return;
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const n = Math.max(1, Math.floor(actx.sampleRate * dur));
+    const buf = actx.createBuffer(1, n, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = fc || 1400;
+    const g = actx.createGain(); g.gain.value = (vol || .3) * GAME_VOL;
+    src.connect(f); f.connect(g); g.connect(actx.destination);
+    src.start();
+  } catch (e) { }
+}
+function playGun()     { playNoise(.22, .5, 3200); sfx(120, .18, 'square', .25, 45); }
+function playCrunch()  { playNoise(.18, .45, 2200); setTimeout(() => playNoise(.12, .3, 1600), 90); }
+function playDrink()   { for (let i = 0; i < 3; i++) setTimeout(() => sfx(320 - i * 60, .12, 'sine', .16, 200 - i * 40), i * 170); }
+function playThrowSnd(){ sfx(700, .25, 'sine', .14, 160); playNoise(.12, .12, 900); }
+function playM6Snd(kind) {
+  if (kind === 'eat') { try { playEat(); } catch (e) { } }
+  else if (kind === 'drink') playDrink();
+  else if (kind === 'gun') playGun();
+  else if (kind === 'throw') playThrowSnd();
+}
+
+function m6StartSkill() {
+  const skl = M6_SKILLS[S.equipped];
+  if (!skl) { tryDashCore(); return; }
+  if (state !== 'playing' || !V || !player) return;
+  /* M9b：清屏走独立冷却，必须在 dashCd 拦截之前判断，否则冲刺冷却会误拦清屏 */
+  if (skl.kind === 'clear') {
+    if ((V.clearCd || 0) > 0) return;
+    V.clearCd = CLEAR_CD;
+    m6ClearScreen();
+    return;
+  }
+  if (V.dashCd > 0) return;
+  if (skl.kind === 'shield' && V.m6Shield > 0) { toast('🛡 薯片护盾已在生效中', true); return; }
+  if (skl.kind === 'shrink' && V.m6ShrinkT > 0) { toast('已经够小了……', true); return; }
+  V.dashCd = Math.max(4, 10 - V.up.charge * 2);
+  if (skl.kind === 'heal') {
+    V.m6Item = { id: skl.item, t: .9, dur: .9, heal: skl.heal };
+    playM6Snd(skl.snd);
+  } else if (skl.kind === 'shield') {
+    V.m6Shield = 2;                      // M6b：两片薯片，各挡一次
+    V.m6Item = { id: 'chip', t: .8, dur: .8, hold: true };
+    playCrunch();
+    toast('🛡 薯片护盾展开：两侧各抵挡 1 次攻击', true);
+  } else if (skl.kind === 'shrink') {
+    V.m6PreR = player.r;
+    player.r = Math.max(12, V.m6MinR * .55);   // M6b：比地图最小尺寸更小
+    V.m6ShrinkT = 10;
+    V.m6BubbleT = 4;
+    /* M12b：缩小持续 10 秒，冷却必须从「效果结束」才开始计时（原来技能一开始就转冷却，
+       持续时间与冷却完全重叠 → 10 秒一过技能立刻又能放）。这里先把冷却清零，
+       由 updateM6 在缩小结束时启动完整冷却。 */
+    V.dashCd = 0;
+    /* M6b：变小期间 10 秒无敌金身（与缩小同步结束） */
+    V.m6PreInvuln = invincibleUntil;
+    invincibleUntil = performance.now() + 10000;
+    sfx(880, .3, 'sine', .12, 220);
+    toast('✦ 金身无敌 10 秒！趁机苟住', true);
+  } else   if (skl.kind === 'shoot') {
+    playM6Snd(skl.snd);
+    V.m6Item = { id: skl.item, t: .7, dur: .7, shoot: true };
+    let tx = null, ty = null, best = 1e9;
+    for (const B of V.bosses) {
+      const d = Math.hypot(B.x - player.x, B.y - player.y);
+      if (d < best) { best = d; tx = B.x; ty = B.y; }
+    }
+    let dx, dy;
+    if (tx !== null) { dx = tx - player.x; dy = ty - player.y; }
+    else if (pointer) { dx = pointer.x - player.x; dy = pointer.y - player.y; }
+    else { dx = player.dir; dy = 0; }
+    const m = Math.hypot(dx, dy) || 1;
+    V.m6Shots.push({ x: player.x, y: player.y, vx: dx / m * 620, vy: dy / m * 620,
+      dmg: skl.dmg, life: 2.2, item: skl.item, rot: Math.atan2(dy, dx) });
+  } else if (skl.kind === 'clear') {
+    m6ClearScreen();
+  }
+}
+function tryDash() { m6StartSkill(); }
+
+/* ============================================================ M7 wjh 皮肤专属技能：清屏
+   效果：瞬间抹掉当前页面里的所有生物（地图上的鱼群），并清空场上弹幕/音浪/函数线。
+   注意：不清 Boss —— Boss 保留，需正常打到血量为 0 才能击败。
+   视觉：以玩家为中心扩散的白金色冲击环 + 白闪 + 大量迸散粒子。
+   冷却 60 秒（独立冷却，与原版冲刺不再共用）。 */
+const CLEAR_CD = 60;                 // M7：清屏冷却 60 秒
+function m6ClearScreen() {
+  if (state !== 'playing' || !V || !player) return;
+  /* 1) 清掉当前页面上的所有生物（鱼群） */
+  let cleared = 0;
+  try {
+    if (typeof fishes !== 'undefined' && fishes && fishes.length) {
+      cleared = fishes.length;
+      fishes.length = 0;
+    }
+  } catch (e) { }
+  /* 2) 场上敌对弹幕/音浪/曲线也一并抹掉（属于"当前页面"的骚扰物） */
+  V.bullets.length = 0;
+  V.waves.length = 0;
+  V.curves.length = 0;
+  /* M9：视野内的 Boss 也一并清掉 —— 直接血量清零走 defeatBoss 正常结算；
+     屏幕外的 Boss 保留，追上去再清 */
+  let bossKilled = 0;
+  const vx0 = cam.x - 60, vx1 = cam.x + innerWidth + 60;
+  const vy0 = cam.y - 60, vy1 = cam.y + innerHeight + 60;
+  for (const B of V.bosses.slice()) {
+    if (B.x + B.r > vx0 && B.x - B.r < vx1 && B.y + B.r > vy0 && B.y - B.r < vy1) {
+      damageBoss(B, B.hp + 1, 'clear');
+      bossKilled++;
+    }
+  }
+  /* 3) 视觉与音效：扩散冲击环 + 白闪 + 迸散粒子 */
+  V.m6ClearT = 1.0;
+  V.m6ClearR = Math.max(W, H) * 1.25;
+  V.hurtFlash = Math.max(V.hurtFlash || 0, .35);
+  try {
+    sfx(160, .35, 'sawtooth', .18, 2400);
+    setTimeout(() => { try { sfx(980, .25, 'sine', .12, 120); } catch (e) { } }, 120);
+    playNoise(.3, .35, 6000);
+  } catch (e) { }
+  for (let i = 0; i < 90; i++) {
+    const a = Math.random() * TAU, sp = rnd(220, 900);
+    V.parts.push({
+      x: player.x, y: player.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      r: rnd(2, 7), life: rnd(.45, .95),
+      c: i % 3 === 0 ? '#ffffff' : (i % 3 === 1 ? '#ffe9a8' : '#9fd8ff')
+    });
+  }
+  toast('✧ wjh 清屏！清掉 ' + cleared + ' 只生物' + (bossKilled ? ' · 清掉 ' + bossKilled + ' 个视野内 Boss' : '') + '，冷却 60 秒', true);
+}
+
+/* M6 状态推进：道具动画计时 / 缩小恢复 / 弹丸飞行与命中 */
+function updateM6(dt) {
+  if (V.m6Item) { V.m6Item.t -= dt; if (V.m6Item.t <= 0) V.m6Item = null; }
+  if (V.m6ShieldFx > 0) V.m6ShieldFx -= dt;
+  if (V.m6BubbleT > 0) V.m6BubbleT -= dt;
+  if (V.m6ClearT > 0) V.m6ClearT -= dt;   /* M7：wjh 清屏冲击环 */
+  if (V.clearCd > 0) V.clearCd -= dt;     /* M7：清屏独立冷却 60 秒 */
+  if (V.m6ShrinkT > 0) {
+    V.m6ShrinkT -= dt;
+    if (V.m6ShrinkT <= 0) {
+      V.m6ShrinkT = 0;
+      player.r = V.m6PreR;
+      /* 金身随缩小一起结束（只回收本技能给的那段无敌，不覆盖其他来源的无敌） */
+      try { invincibleUntil = Math.min(invincibleUntil, performance.now() + 800); } catch (e) { }
+      /* M12b：冷却从技能效果结束才开始（闪充仍然生效） */
+      V.dashCd = Math.max(4, 10 - (V.up.charge || 0) * 2);
+      toast('终于缓过来了，变回原来的大小（技能进入冷却）', true);
+    }
+  }
+  /* 吃/喝回血：道具递到嘴边（动画中点）时生效一次 */
+  if (V.m6Item && V.m6Item.heal && !V.m6Item.applied && V.m6Item.t <= V.m6Item.dur * .5) {
+    V.m6Item.applied = true;
+    V.hp = Math.min(V.maxHp, V.hp + V.m6Item.heal);
+    updateHud();
+    toast('♥ 回复 ' + V.m6Item.heal + ' 滴血', true);
+    for (let i = 0; i < 14; i++) V.parts.push({ x: player.x, y: player.y, vx: rnd(-90, 90), vy: rnd(-140, -30), r: rnd(2, 5), life: rnd(.4, .8), c: '#7dff9a' });
+  }
+  /* 弹丸：飞行 → 撞 Boss 结算伤害 */
+  for (let i = V.m6Shots.length - 1; i >= 0; i--) {
+    const s = V.m6Shots[i];
+    s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+    let hit = false;
+    for (const B of V.bosses) {
+      if (Math.hypot(B.x - s.x, B.y - s.y) < B.r * .55 + 14) { damageBoss(B, s.dmg, 'm6'); hit = true; break; }
+    }
+    if (hit || s.life <= 0) {
+      if (hit) {
+        for (let k = 0; k < 12; k++) V.parts.push({ x: s.x, y: s.y, vx: rnd(-180, 180), vy: rnd(-180, 180), r: rnd(2, 5), life: rnd(.25, .5), c: '#ffd54a' });
+        playCrunch();
+      }
+      V.m6Shots.splice(i, 1);
+    }
+  }
+}
+
+/* M6 世界层绘制：护盾 / 使用中道具 / 飞行弹丸（世界坐标，画在 Boss 层里） */
+function drawM6World(t) {
+  if (!V || !player) return;
+  const p = player;
+  const drawSpr = (id, x, y, sz, rot, alpha) => {
+    const im = M6_IMG[id];
+    if (!(im && im.complete && im.naturalWidth)) return;
+    ctx.save();
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.translate(x, y);
+    if (rot) ctx.rotate(rot);
+    ctx.drawImage(im, -sz / 2, -sz / 2, sz, sz);
+    ctx.restore();
+  };
+  /* 薯片护盾：身体两侧各一片，随剩余次数消失；碎裂期渐隐 */
+  if (V.m6Shield > 0 || V.m6ShieldFx > 0) {
+    const a = V.m6Shield > 0 ? .95 : Math.max(0, V.m6ShieldFx / .7);
+    const bob = Math.sin(t / 220) * 3;
+    /* 两侧各一片：右侧（朝向侧）+ 左侧 */
+    const sides = [1, -1];
+    for (let si = 0; si < sides.length; si++) {
+      const sgn = sides[si];
+      if (V.m6Shield <= 0 && si === 1) break;         // 只剩 1 片时只画一片
+      drawSpr('chip', p.x + sgn * p.r * .95, p.y - p.r * .25 + bob,
+        p.r * 1.5, sgn * (Math.PI / 2) + Math.sin(t / 300) * .12, a);
+    }
+    if (V.m6Shield > 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,220,120,.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.55 + Math.sin(t / 260) * 2, 0, TAU); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  /* 使用中的道具：吃/喝递向嘴边，举枪/叉微抬起 */
+  if (V.m6Item) {
+    const pr = 1 - V.m6Item.t / V.m6Item.dur;
+    const sz = p.r * 1.15;                                   // ≈半个身子
+    const rise = V.m6Item.hold ? 0 : pr * p.r * .5;
+    const a = V.m6Item.hold || pr < .8 ? 1 : (1 - pr) * 5;
+    const rot = V.m6Item.shoot ? -.35 : Math.sin(t / 160) * .1;
+    drawSpr(V.m6Item.id, p.x + p.r * .8, p.y - p.r * .2 - rise + Math.sin(t / 250) * 2, sz, rot, a);
+  }
+  /* M7：wjh 清屏冲击环 —— 以玩家为中心向外扩散的金白双环 */
+  if (V.m6ClearT > 0) {
+    const pr = 1 - V.m6ClearT / 1.0;                 // 0 → 1
+    const ease = 1 - Math.pow(1 - pr, 2.2);
+    const rad = ease * (V.m6ClearR || Math.max(W, H) * 1.25);
+    const fade = Math.max(0, 1 - pr * 1.1);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    /* 外环：金 */
+    ctx.globalAlpha = fade * .9;
+    ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = 10 * fade + 2;
+    ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 26;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, TAU); ctx.stroke();
+    /* 内环：白，滞后一点 */
+    const rad2 = rad * .82;
+    ctx.globalAlpha = Math.max(0, fade - .12) * .85;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * fade + 1;
+    ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad2, 0, TAU); ctx.stroke();
+    /* 中心余晖 */
+    const cg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 3.4);
+    cg.addColorStop(0, 'rgba(255,255,255,' + (fade * .55) + ')');
+    cg.addColorStop(1, 'rgba(255,235,170,0)');
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 3.4, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  /* 飞行弹丸 */
+  for (const s of V.m6Shots) drawSpr(s.item, s.x, s.y, p.r * .9, s.rot, 1);
+}
+
+/* M6 白底黑字气泡（屏幕坐标，居中靠上）：线性代数「变小」时吐槽 */
+function drawM6Bubble() {
+  if (!V || V.m6BubbleT <= 0) return;
+  const a = Math.min(1, V.m6BubbleT / .4);
+  const vw = innerWidth, vh = innerHeight;
+  const bw = Math.min(430, vw * .78), bh = 62;
+  const x = vw / 2 - bw / 2, y = vh * .15;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(255,255,255,.96)';
+  ctx.strokeStyle = 'rgba(40,40,60,.85)'; ctx.lineWidth = 2;
+  const r = 16;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + bw, y, x + bw, y + bh, r);
+  ctx.arcTo(x + bw, y + bh, x, y + bh, r);
+  ctx.arcTo(x, y + bh, x, y, r);
+  ctx.arcTo(x, y, x + bw, y, r);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(vw / 2 - 9, y + bh - 1); ctx.lineTo(vw / 2 + 9, y + bh - 1); ctx.lineTo(vw / 2, y + bh + 14);
+  ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.fill();
+  ctx.fillStyle = '#141420';
+  ctx.font = '900 17px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('QᴧQᵀ难。。我大脑要变小脑了', vw / 2, y + bh / 2);
+  ctx.restore();
+}
+
 /* 移动端浏览器会在 touchstart 后补发合成的 mousedown，
    一次点按被计成两次「tap」，导致单击就触发冲刺。
    这里记录最近一次触摸时间，忽略其后 600ms 内的合成鼠标事件。 */
@@ -1065,11 +1588,144 @@ function tapDash(e) {
   if (n - lastTap < 280) tryDash();
   lastTap = n;
 }
-addEventListener('touchstart', tapDash, { passive: true });
-addEventListener('mousedown', tapDash);
+/* 技能按钮（右下角，冲刺按钮上方）：显示冷却，点按直接释放水波 */
+const spinbtn = el('div', 'spinbtn', null, '<div style="display:grid;place-items:center"><b>水波</b><span>单击屏幕</span></div>');
+document.body.appendChild(spinbtn);
+spinbtn.onclick = trySpinAttack;
+/* M6b 修复 BUG1 / M10：tapAttack 只在游戏中且未点到 UI 时生效；
+   触摸监听改到下方（touchend 判定），此处只保留桌面鼠标。 */
+
+/* ------------------------------------------------------------ 7.5 旋转水波（M5b 近战攻击技能）
+   参考视频：海豹原地绕纵轴快速自转，身上缠出两条青色螺旋水带（前后分层产生缠绕感），
+   伴随上升气泡与白色碎浪。近战范围：仅贴身小半径内 Boss 各扣 5 滴血。
+   冷却 8 秒；单击与双击（冲刺）靠 300ms 停顿区分。 */
+/* M11 平衡：原 5 伤害 / 8 秒冷却，打 Boss1 需要 20 次、约 160 秒，手感过苦。
+   调整为 12 伤害 / 5.5 秒冷却，命中半径略放宽，让水波成为真正能推进血线的主力技能 */
+const SPIN_ATK = { cd: 5.5, dmg: 12, dur: .78 };
+let tapTimer = 0;
+function trySpinAttack() {
+  if (state !== 'playing' || !V || !player) return;
+  if (V.spinCd > 0) return;
+  V.spinCd = SPIN_ATK.cd;
+  V.spinT = SPIN_ATK.dur;
+  const R = player.r * 2.5 + 48;          // M11：近战半径略放宽（原 2.2r+36，贴脸才打得中）
+  /* M6b：水波强化进化 —— M11：每级 +7 滴伤害（原 +5） */
+  const dmg = SPIN_ATK.dmg + (V.up.wave || 0) * 7;
+  sfx(560, .45, 'sine', .12, 160);
+  sfx(300, .5, 'triangle', .07, 420);
+  let hitCnt = 0;
+  for (const B of V.bosses.slice()) {
+    if (Math.hypot(B.x - player.x, B.y - player.y) < R + B.r * .5) {
+      damageBoss(B, dmg, 'spin'); hitCnt++;
+    }
+  }
+  if (hitCnt) toast('〜 水波命中 ' + hitCnt + ' 个 Boss −' + dmg, true);
+}
+/* 螺旋水带：每条带绕身体约一圈，前侧段画亮色（back=false，画在身体之上），
+   背侧段画半透明暗色（back=true，画在身体之下）→ 形成缠绕身体的立体感 */
+function drawSpinRibbon(pr, back) {
+  const A = player.r * 1.55, yT = -player.r * 1.35, yB = player.r * 1.45;
+  for (let s = 0; s < 2; s++) {
+    const th0 = pr * TAU * 2.2 + s * Math.PI;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i <= 28; i++) {
+      const u = i / 28;
+      const th = th0 + u * TAU * .9;
+      if ((Math.cos(th) < 0) === back) { started = false; continue; }
+      const x = Math.sin(th) * A;
+      const y = yT + u * (yB - yT);
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = back ? 'rgba(130,215,250,.45)' : 'rgba(150,238,255,.95)';
+    ctx.lineWidth = back ? 4 : 8;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(110,215,255,1)'; ctx.shadowBlur = back ? 6 : 18;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    if (!back) {                          // 前侧带的白色碎浪高光
+      ctx.strokeStyle = 'rgba(245,253,255,.75)';
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+    }
+  }
+}
+/* 上升气泡 + 白色泡沫：围绕海豹螺旋外扩、向上飘散，随动画进度渐隐 */
+function drawSpinBubbles(pr) {
+  const a0 = 1 - pr;
+  if (a0 <= 0) return;
+  for (let k = 0; k < 10; k++) {
+    const th = k * .63 + pr * 5;
+    const rr = player.r * (1.15 + pr * 1.7);
+    const bx = Math.cos(th) * rr;
+    const by = Math.sin(th) * rr * .45 - pr * 75 - k * 2.5;
+    const a = a0 * .8;
+    const br = 2 + (k % 3) * 1.6;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU);
+    ctx.fillStyle = 'rgba(200,238,255,' + (a * .3).toFixed(3) + ')';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(228,248,255,' + a.toFixed(3) + ')';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+}
+/* M6b 修复 BUG1：原来 tapAttack 无差别监听全局 mousedown/touchstart，
+   点「开始游戏」、点进化卡、点商店/设置都会顺带触发水波。
+   现在只在「游戏中」且「没有点到任何 UI 控件」时才判定为单击屏幕。
+   M10：手机端「拖动移动误触攻击」修复 —— 触摸改为 touchend 判定，
+   必须「位移 < TAP_MAX_MOVE 且时长 < TAP_MAX_MS」才算点按；按住拖动只是移动。 */
+const TAP_MAX_MOVE = 16;     // 允许的手指抖动（CSS px）
+const TAP_MAX_MS = 230;      // 点按最长时长
+let tStartX = 0, tStartY = 0, tStartT = 0, tDragged = false, tOnUi = false;
+
+function isUiTarget(t) {
+  if (!t || !t.closest) return false;
+  return !!t.closest('#startScreen,#overScreen,#lvCards,#lvov,#shopOv,#setOv,.v2ov,#dashbtn,#spinbtn,#panel,#shopBtn,#diffPanel');
+}
+/* 一次有效点按：280ms 内第二下 = 冲刺，否则 300ms 后 = 水波 */
+function handleTap() {
+  const n = performance.now();
+  if (n - lastTap < 280) {                       // 双击 → 冲刺（取消挂起的单击攻击）
+    clearTimeout(tapTimer); tapTimer = 0;
+    tryDash(); lastTap = 0;
+    return;
+  }
+  lastTap = n;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => {
+    tapTimer = 0;
+    if (state === 'playing') trySpinAttack();     // 停顿期间若进了弹窗/结算，放弃这次攻击
+  }, 300);
+}
+function tapAttack(e) {                          // 仅桌面鼠标走这里
+  if (state !== 'playing') return;               // 菜单/进化/结算界面：不触发任何战斗操作
+  if (isUiTarget(e.target)) return;              // 点在按钮/面板/卡牌上：交给控件自己处理
+  const n = performance.now();
+  if (n - lastTouchTap < 600) return;            // 触摸合成的 mousedown，跳过
+  handleTap();
+}
+/* 触摸三段式：按下记起点 → 移动超阈值标记为拖动 → 抬起时只有「快速轻点」才算点击 */
+addEventListener('touchstart', e => {
+  const t = e.touches && e.touches[0]; if (!t) return;
+  tStartX = t.clientX; tStartY = t.clientY; tStartT = performance.now();
+  tDragged = false; tOnUi = isUiTarget(e.target);
+}, { passive: true });
+addEventListener('touchmove', e => {
+  const t = e.touches && e.touches[0]; if (!t) return;
+  if (Math.hypot(t.clientX - tStartX, t.clientY - tStartY) > TAP_MAX_MOVE) tDragged = true;
+}, { passive: true });
+addEventListener('touchend', () => {
+  lastTouchTap = performance.now();              // 拦掉随后浏览器的合成 mousedown
+  if (tOnUi || tDragged) return;                 // 点 UI / 拖动移动 → 不触发技能
+  if (performance.now() - tStartT > TAP_MAX_MS) return;   // 长按 → 不算点击
+  if (state !== 'playing') return;
+  handleTap();
+}, { passive: true });
+addEventListener('mousedown', tapAttack);
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (k === ' ' || k === 'shift') { e.preventDefault(); tryDash(); }
+  if (k === ' ' || k === 'shift') { e.preventDefault(); trySpinAttack(); }
   if (state === 'levelup' && ['1', '2', '3'].includes(k)) {
     const c = document.querySelectorAll('#lvCards .lvc'); const i = +k - 1;
     if (c[i]) c[i].click();
@@ -1137,16 +1793,15 @@ function applyLv(id) {
   if (id === 'magnet') { u.magnet++; }
   if (id === 'devour') { u.devour++; }
   if (id === 'combo')  { u.combo++; }
-  /* 注意：不能把 lives 撑到 MAX_LIVES 以上 ——
-     原版 updateHud 用 '🖤'.repeat(MAX_LIVES - lives)，负数会抛 RangeError。
-     所以改成「回满 + 无敌」，满命时也有收益。 */
+  /* M6b：疗愈 —— 改为回血 + 短无敌（不再回满）；M11：20 → 30 滴 */
   if (id === 'vigor')  {
-    lives = MAX_LIVES;
-    invincibleUntil = Math.max(invincibleUntil, performance.now() + 5000);
-    updateHud();
+    V.hp = Math.min(V.maxHp, V.hp + 30);
+    lives = 1; updateHud();
+    invincibleUntil = Math.max(invincibleUntil, performance.now() + 3000);
   }
   if (id === 'charge') { u.charge++; }
   if (id === 'harvest') { u.harvest++; }
+  if (id === 'wave')   { u.wave++; }      /* M6b：水波强化（伤害在 trySpinAttack 里叠加） */
   const d = UPGRADES.find(x => x.id === id);
   sfx(880, .12, 'triangle', .1);
   toast('✦ 进化：' + d.name + '　' + d.d, true);
@@ -1160,23 +1815,62 @@ function spawnBoss(i) {
   const boss = {
     def, t: 0, ph: 1, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: rnd(H * .3, H * .7),
     r: def.r, atk: 2, hitT: 0,
-    orbs: [0, 1, 2].map(k => ({ alive: true, state: 'guarded', cyc: 2.6 + k * 1.3, r: 19,
-      ang: k * TAU / 3, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+    hp: def.hp, maxHp: def.hp,          /* M4：Boss 血量 */
+    beam: null, beamStop: 0, danT: 0,   /* M4：Boss3 拉人 / 弹幕状态 */
+    /* M9：方块系统全员回归 —— Boss1 三个外卖（吃完=击败）；
+       Boss2 四个辣条方块 / Boss3 五个课本方块（全部吃完 → 扣掉 Boss 当前一半血量，方块稍后重生） */
+    orbs: def.key === 'dj'
+      ? [0, 1, 2].map(k => ({ alive: true, state: 'guarded', cyc: 2.6 + k * 1.3, r: 19,
+          ang: k * TAU / 3, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+      : def.key === 'moyu'
+      ? [0, 1, 2, 3].map(k => ({ alive: true, state: 'guarded', cyc: 2.8 + k * 1.2, r: 18,
+          ang: k * TAU / 4, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+      : def.key === 'math'
+      ? [0, 1, 2, 3, 4].map(k => ({ alive: true, state: 'guarded', cyc: 3 + k * 1.1, r: 18,
+          ang: k * TAU / 5, x: fromLeft ? -def.r * 1.6 : W + def.r * 1.6, y: H / 2 }))
+      : []
   };
   V.bosses.push(boss);
   bossbar.classList.add('on');
   document.getElementById('bbname').textContent = def.name + ' · ' + def.sub;
-  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
+  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' 个';
   document.getElementById('bbfill').style.width = '100%';
   toast(def.line, true);
   playBossVoice();   /* Boss 出场音效 */
 }
 
+/* M12：Boss 血条 DOM 缓存 + 值变化才写 + 20Hz 节流（原来每帧 3 次 DOM 写触发样式重算） */
+const M12_BB = { fill: null, num: null, tag: null, name: null, w: '', n: '', tg: '', nm: '', at: 0 };
 function updateBoss(dt) {
   if (!V.bosses.length) return;
-  for (const B of V.bosses) updateBossOne(B, dt);
+  /* M12：迭代副本 —— updateBossOne 里吃方块会触发 defeatBoss 从数组里删 Boss，
+     直接 for...of 会在删除后跳过下一个元素（表现为某个 Boss 当帧僵住不动） */
+  for (const B of V.bosses.slice()) updateBossOne(B, dt);
   // 弹幕（全局，与单个 Boss 无关，但原逻辑放在 updateBoss 里，这里独立处理一次）
   updateBullets(dt);
+  if (!V.bosses.length) return;
+  const now2 = performance.now();
+  if (now2 - M12_BB.at < 50) return;
+  M12_BB.at = now2;
+  if (!M12_BB.fill || !M12_BB.fill.isConnected) {
+    M12_BB.fill = document.getElementById('bbfill');
+    M12_BB.num = document.getElementById('bbnum');
+    M12_BB.tag = document.getElementById('bbtag');
+    M12_BB.name = document.getElementById('bbname');
+  }
+  /* M4：Boss 血条同步（血量最低者）+ 条内及时数字 */
+  let low = V.bosses[0];
+  for (const b of V.bosses) if (b.hp / b.maxHp < low.hp / low.maxHp) low = b;
+  /* M12b：名称要跟着血条对应的 Boss 走（原来只在出场时写一次，
+     多 Boss 同场时会出现「名字是高数压轴，数字却是 DJ 的 80/80」） */
+  const nm = low.def.name + ' · ' + low.def.sub;
+  if (nm !== M12_BB.nm) { if (M12_BB.name) M12_BB.name.textContent = nm; M12_BB.nm = nm; }
+  const w = (low.hp / low.maxHp * 100).toFixed(1) + '%';
+  if (w !== M12_BB.w) { if (M12_BB.fill) M12_BB.fill.style.width = w; M12_BB.w = w; }
+  const n = Math.ceil(low.hp) + ' / ' + low.maxHp;
+  if (n !== M12_BB.n) { if (M12_BB.num) M12_BB.num.textContent = n; M12_BB.n = n; }
+  const tg = '剩 ' + V.bosses.length + ' 个';
+  if (tg !== M12_BB.tg) { if (M12_BB.tag) M12_BB.tag.textContent = tg; M12_BB.tg = tg; }
 }
 function updateBossOne(B, dt) {
   const D = B.def;
@@ -1190,17 +1884,18 @@ function updateBossOne(B, dt) {
   B.x = clamp(B.x, -B.r * .4, W + B.r * .4);
   B.y = clamp(B.y, B.r * .5, H - B.r * .5);
 
-  // 核心物环绕
+  // 核心物环绕（M9：按方块数量均分圆周，不再写死 3 个）
   B.orbs.forEach((o, k) => {
     if (!o.alive) return;
+    const orbN = B.orbs.length || 1;
     o.ang += dt * (0.8 + B.ph * 0.12);
     const base = B.r * 0.95 + 30;
-    const gx = B.x + Math.cos(o.ang + k * TAU / 3) * base;
-    const gy = B.y + Math.sin(o.ang + k * TAU / 3) * base;
+    const gx = B.x + Math.cos(o.ang + k * TAU / orbN) * base;
+    const gy = B.y + Math.sin(o.ang + k * TAU / orbN) * base;
     let ox = gx, oy = gy;
     if (o.state === 'open') {
-      ox = B.x + Math.cos(o.ang + k * TAU / 3) * (base + 34);
-      oy = B.y + Math.sin(o.ang + k * TAU / 3) * (base + 26);
+      ox = B.x + Math.cos(o.ang + k * TAU / orbN) * (base + 34);
+      oy = B.y + Math.sin(o.ang + k * TAU / orbN) * (base + 26);
     }
     o.x += (ox - o.x) * Math.min(1, dt * 4);
     o.y += (oy - o.y) * Math.min(1, dt * 4);
@@ -1217,47 +1912,113 @@ function updateBossOne(B, dt) {
     }
   });
 
-  // 攻击
-  B.atk -= dt;
-  if (B.atk <= 0) {
-    B.atk = D.atkCd - Math.min(1, B.ph * .3);   // 相位最多压缩 1 秒，保证基础间隔（DJ 为 5s）
-    if (D.atk === 'ring') {
-      const n = 1 + B.ph;
-      for (let i = 0; i < n; i++) setTimeout(() => {
-        if (V && V.bosses.includes(B)) V.waves.push({ x: B.x, y: B.y, r: B.r * .5, sp: 300, dmg: 6 + B.ph * 2, a: 1, hit: false });
-      }, i * 170);
-    } else if (D.atk === 'spread') {
-      const n = 9 + B.ph * 3, off = rnd(0, TAU);
-      for (let i = 0; i < n; i++) {
-        const a = off + i / n * TAU;
-        V.bullets.push({ x: B.x, y: B.y, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210,
-          r: 9, sp: 210, dmg: D.dmg, life: 5, homing: false, c: '#ff7a3d' });
+  /* M9：Boss2/3 方块全部吃完 → 结算已触发（见 eatOrb），这里负责 10 秒后重生方块，
+     让「吃完减半血」可以反复触发 */
+  if ((D.key === 'moyu' || D.key === 'math') && B.orbs.length) {
+    if (B.orbs.every(o => !o.alive)) {
+      if (B.orbRespawnAt === undefined) B.orbRespawnAt = B.t + 10;
+      else if (B.t >= B.orbRespawnAt) {
+        B.orbRespawnAt = undefined;
+        const n = B.orbs.length;
+        B.orbs.forEach((o, k) => { o.alive = true; o.state = 'guarded'; o.cyc = 2.8 + k * 1.1; });
+        toast('◆ ' + D.name + ' 召回了新的' + D.orb + '！', true);
+        sfx(500, .2, 'square', .08, 200);
       }
-    } else {
-      /* 高数压轴：蛇形函数线 —— 整体朝玩家冲出去，路径按正弦摆动，一路前进到出界 */
-      const baseAng = Math.atan2(player.y - B.y, player.x - B.x);
-      const cnt = B.ph >= 3 ? 2 : 1;
-      for (let i = 0; i < cnt; i++) {
-        V.snakes.push({
-          pts: [{ x: B.x, y: B.y }],
-          ang0: baseAng + (i - (cnt - 1) / 2) * 0.55,
-          t: 0, speed: 230 + B.ph * 36, amp: 0.62, freq: 4.6,
-          w: 8, dmg: D.dmg, maxLen: 560, life: 7, cool: 0
-        });
-      }
-      sfx(170, .4, 'sawtooth', .09, 60);
     }
-    beep('death');
   }
 
-  // 撞本体
+  // 攻击
+  if (D.key !== 'math') {
+    B.atk -= dt;
+    if (B.atk <= 0) {
+      B.atk = D.atkCd - Math.min(1, B.ph * .3);   // 相位最多压缩 1 秒，保证基础间隔（DJ 为 5s）
+      if (D.atk === 'ring') {
+        const n = 1 + B.ph;
+        for (let i = 0; i < n; i++) setTimeout(() => {
+          if (V && V.bosses.includes(B)) V.waves.push({ x: B.x, y: B.y, r: B.r * .5, sp: 300, dmg: 4 + B.ph * 1.5, a: 1, hit: false });
+        }, i * 170);
+      } else if (D.atk === 'spread') {
+        const n = 7 + B.ph * 2, off = rnd(0, TAU);   /* M11：9+3ph → 7+2ph，手机屏上弹幕不再密不透风 */
+        for (let i = 0; i < n; i++) {
+          const a = off + i / n * TAU;
+          V.bullets.push({ x: B.x, y: B.y, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210,
+            r: 11, sp: 210, dmg: D.dmg, life: 5, homing: false, c: '#ff7a3d' });   /* M2：辣条比原子弹大一点 */
+        }
+      }
+      beep('death');
+    }
+  } else {
+    /* M4：高数压轴技能重做 ——
+       ① 函数线条把玩家持续拉过来（拉拽期间每秒扣 5 滴），攻击范围为半个地图；
+          只有「玩家受到攻击」或「玩家离开攻击范围」时才会停止；
+       ② 玩家被拉近"课本"（Boss 本体）附近后改发弹幕：
+          积分号贴图横着发出、飞行中 360° 旋转、碰到扣 10 滴。 */
+    const pd = Math.hypot(player.x - B.x, player.y - B.y);
+    /* 半个地图 = 世界对角线的一半（按当前视野推算，兼容任意分辨率） */
+    const halfMap = Math.max(W, H) * .5;
+    if (B.beam) {
+      /* 拉拽中：持续把玩家朝 Boss 拽；受伤标记/超范围则中断 */
+      const dx = B.x - player.x, dy = B.y - player.y, d = Math.hypot(dx, dy) || 1;
+      if (d > MATH3.pullStop) {
+        player.x = clamp(player.x + dx / d * MATH3.beamSpeed * dt, player.r, W - player.r);
+        player.y = clamp(player.y + dy / d * MATH3.beamSpeed * dt, player.r, H - player.r);
+        pointer.x = player.x; pointer.y = player.y;
+      }
+      B.beamTick -= dt;
+      if (B.beamTick <= 0) { B.beamTick += 1; hitPlayer(MATH3.beamDps, true); }
+      /* 玩家受击（beamHurt 由 hitPlayer 打标）或离开攻击范围 → 解除拉拽 */
+      if (d <= MATH3.pullStop + 10 || d > halfMap || B.beamStop) {
+        B.beam = null; B.beamStop = 0;
+      }
+    } else {
+      B.beamCdT = (B.beamCdT === undefined ? MATH3.beamCd : B.beamCdT) - dt;
+      if (B.beamCdT <= 0 && pd < halfMap) {
+        B.beam = true; B.beamTick = .4;
+        B.beamCdT = MATH3.beamCd;
+        toast('§ 函数引力 · 被拉过去了！', true);
+        sfx(150, .5, 'sawtooth', .1, 45);
+      }
+    }
+    /* 弹幕：玩家靠近课本时触发，横着发一排积分号 */
+    if (pd < MATH3.pullStop + 90) {
+      B.danT -= dt;
+      if (B.danT <= 0) {
+        B.danT = MATH3.danmakuCd;
+        const rows = 3, side = 260;
+        for (let r = 0; r < rows; r++) {
+          const y = B.y + (r - (rows - 1) / 2) * 56;
+          for (const s of [-1, 1]) {
+            V.bullets.push({
+              x: B.x, y, vx: s * side, vy: rnd(-18, 18),
+              r: 13, sp: side, dmg: MATH3.danmakuDmg, life: 4.5, homing: false,
+              c: '#9fe0ff', integral: true, spin: rnd(0, TAU), spinV: (4.2 + rnd(0, 1.4)) * (Math.random() < .5 ? -1 : 1)
+            });
+          }
+        }
+        sfx(600, .18, 'square', .07, 220);
+      }
+    } else B.danT = Math.min(B.danT || 0, .5);
+  }
+
+  // 撞本体：M5 起撞击不掉血，只把玩家把弹开（伤害只来自声波/辣条/积分符号/函数触手/拉拽）
   const bd = Math.hypot(player.x - B.x, player.y - B.y);
   if (bd < B.r * .55 + player.r * .7) {
-    const k = 260 / (bd || 1);
-    pointer.x = clamp(pointer.x + (player.x - B.x) / bd * 60, 0, W);
-    pointer.y = clamp(pointer.y + (player.y - B.y) / bd * 60, 0, H);
-    hitPlayer(6, true);
+    pointer.x = clamp(pointer.x + (player.x - B.x) / bd * 90, 0, W);
+    pointer.y = clamp(pointer.y + (player.y - B.y) / bd * 90, 0, H);
   }
+}
+
+/* M4：Boss 统一掉血入口（血量归零即击败；DJ 也保留吃完 3 个外卖直接击败） */
+function damageBoss(B, dmg, why) {
+  if (!V || !B || B.hp <= 0) return;
+  B.hp = Math.max(0, B.hp - dmg);
+  B.hitT = .35;
+  sfx(420, .07, 'square', .05, 700);
+  for (let q = 0; q < 8; q++) V.parts.push({
+    x: B.x + rnd(-B.r * .5, B.r * .5), y: B.y + rnd(-B.r * .5, B.r * .5),
+    vx: rnd(-160, 160), vy: rnd(-160, 160), r: rnd(2, 6), life: .35, c: '#ffd54a'
+  });
+  if (B.hp <= 0) defeatBoss(B);
 }
 
 function updateBullets(dt) {
@@ -1272,6 +2033,7 @@ function updateBullets(dt) {
       b.vy += (ay / ad * b.sp - b.vy) * Math.min(1, dt * 1.5);
     }
     b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.integral) b.spin += (b.spinV || 5) * dt;   /* M4：积分号弹幕 360° 旋转 */
     if (b.x < -60 || b.x > W + 60 || b.y < -60 || b.y > H + 60) { V.bullets.splice(i, 1); continue; }
     if (Math.hypot(b.x - player.x, b.y - player.y) < player.r * .68 + b.r * .8) {
       hitPlayer(b.dmg, true);
@@ -1287,34 +2049,50 @@ function updateBullets(dt) {
     const wd = Math.hypot(player.x - w.x, player.y - w.y);
     if (!w.hit && Math.abs(wd - w.r) < player.r * .68 + 8) { w.hit = true; hitPlayer(w.dmg, true); }
   }
-  // 蛇形函数线（高数压轴）：一路往前冲，撞到就掉血
-  for (let i = V.snakes.length - 1; i >= 0; i--) {
-    const s = V.snakes[i];
+  /* M2：函数轨迹线（高数压轴）—— 头部沿函数曲线推进，整体朝玩家缓慢转向，
+     穿透玩家后继续延伸；线段带寿命，随时间从尾部慢慢消失 */
+  for (let i = V.curves.length - 1; i >= 0; i--) {
+    const s = V.curves[i];
     s.t += dt; s.life -= dt;
-    const head = s.pts[s.pts.length - 1];
-    const ang = s.ang0 + Math.sin(s.t * s.freq) * s.amp;      // 朝玩家 + 正弦蛇行
-    const nx = head.x + Math.cos(ang) * s.speed * dt;
-    const ny = head.y + Math.sin(ang) * s.speed * dt;
-    s.pts.push({ x: nx, y: ny });
-    // 限长：超过就掐尾（头进尾出，像一条蛇）
-    let len = 0;
-    for (let k = s.pts.length - 1; k > 0; k--) {
-      len += Math.hypot(s.pts[k].x - s.pts[k - 1].x, s.pts[k].y - s.pts[k - 1].y);
-      if (len > s.maxLen) { s.pts.splice(0, k - 1); break; }
+    /* 跟踪玩家：基准角以有限转速朝玩家方向转 */
+    const want = Math.atan2(player.y - s.hy, player.x - s.hx);
+    let da = want - s.baseAng;
+    while (da > Math.PI) da -= TAU;
+    while (da < -Math.PI) da += TAU;
+    s.baseAng += clamp(da, -.9 * dt, .9 * dt) * .55;
+    /* 头部沿函数轨迹推进：acc 为归一化弧长进度 */
+    if (s.done <= 0) {
+      s.acc += s.speed * dt / s.sc;
+      const fp = s.f.s.pts, target = Math.min(s.acc / s.f.s.step, fp.length - 1);
+      while (s.idx < target) {
+        s.idx++;
+        const p = fp[Math.floor(s.idx)];
+        const ca = Math.cos(s.baseAng), sa = Math.sin(s.baseAng);
+        const wx = s.hx + (p[0] * ca - p[1] * sa) * s.sc;
+        const wy = s.hy + (p[0] * sa + p[1] * ca) * s.sc;
+        s.pts.push({ x: wx, y: wy, age: 0 });
+      }
+      if (s.idx >= fp.length - 1.01) s.done = .0001;   /* 单程画完（允许图像自我重叠） */
+    } else {
+      s.done += dt;                                     /* 画完后停留，等尾部消失 */
     }
+    /* 线段寿命：从最老的一端开始慢慢消失 */
+    for (let k = 0; k < s.pts.length; k++) s.pts[k].age += dt;
+    while (s.pts.length && s.pts[0].age > s.fade) s.pts.shift();
+    /* 穿透判定：抽点检测，命中后短暂冷却，曲线不消失继续延伸 */
     s.cool -= dt;
-    if (s.cool <= 0) {                                        // 抽点检测，避免全量遍历
-      const rr = player.r * .68 + s.w * .8;
-      for (let k = 0; k < s.pts.length; k += 2) {
+    if (s.cool <= 0 && s.pts.length > 4) {
+      const rr = player.r * .68 + 6;
+      for (let k = 0; k < s.pts.length; k += 3) {
         const p = s.pts[k];
         if (Math.hypot(p.x - player.x, p.y - player.y) < rr) {
-          s.cool = 1.0; hitPlayer(s.dmg, true);
+          s.cool = .9; hitPlayer(s.dmg, true);
           for (let q = 0; q < 8; q++) V.parts.push({ x: p.x, y: p.y, vx: rnd(-150, 150), vy: rnd(-150, 150), r: rnd(2, 5), life: .4, c: '#bfe6ff' });
           break;
         }
       }
     }
-    if (s.life <= 0 || nx < -80 || nx > W + 80 || ny < -80 || ny > H + 80) V.snakes.splice(i, 1);
+    if (s.life <= 0 || (s.done > s.fade && !s.pts.length) || s.pts.length > 2600) V.curves.splice(i, 1);
   }
 }
 
@@ -1328,10 +2106,31 @@ function eatOrb(o, B) {
   V.orbsEaten = (V.orbsEaten || 0) + 1;
   score += Math.round(D.orbCoin / 3);          // 分数/成长仍用原始值，不受积分倍率影响
   updateHud();
-  toast('◆ 吃掉' + D.orb + '！积分 +' + gain, true);
   sfx(240, .3, 'sawtooth', .1, 90);
   for (let q = 0; q < 26; q++) V.parts.push({ x: o.x, y: o.y, vx: rnd(-260, 260), vy: rnd(-260, 260), r: rnd(3, 9), life: rnd(.4, .8), c: '#ffd54a' });
-  if (B.orbs.every(x => !x.alive)) defeatBoss(B);
+
+  if (D.key === 'dj') {
+    /* Boss1 特例：每个外卖扣 1/3 最大血量，吃满 3 个直接击败 */
+    B.hp = Math.max(0, B.hp - Math.round(B.maxHp / 3));
+    B.hitT = .4;
+    toast('◆ 吃掉' + D.orb + '！积分 +' + gain, true);
+  } else {
+    /* M9：Boss2/3 —— 单个方块不扣血；全部吃完 → 扣掉 Boss 当前血量的一半，方块稍后重生 */
+    const allGone = B.orbs.every(x => !x.alive);
+    if (allGone) {
+      const cut = Math.max(1, Math.ceil(B.hp / 2));
+      B.hp = Math.max(0, B.hp - cut);
+      B.hitT = .5;
+      B.orbRespawnAt = B.t + 10;
+      toast('◆ ' + D.orb + '全部吃完！' + D.name + ' 血量 -' + cut + '（当前 ' + B.hp + '/' + B.maxHp + '）', true);
+      beep('win');
+      for (let q = 0; q < 40; q++) V.parts.push({ x: B.x + rnd(-B.r * .5, B.r * .5), y: B.y + rnd(-B.r * .5, B.r * .5), vx: rnd(-320, 320), vy: rnd(-320, 320), r: rnd(3, 9), life: rnd(.4, .9), c: D.orbC });
+    } else {
+      toast('◆ 吃掉' + D.orb + '！积分 +' + gain + '（集齐可重创 ' + D.name + '）', true);
+    }
+  }
+  /* 血量归零 → 击败 */
+  if (B.hp <= 0) defeatBoss(B);
 }
 
 function defeatBoss(B) {
@@ -1348,7 +2147,7 @@ function defeatBoss(B) {
   if (V.bossDone > (S.bossKilled || 0)) { S.bossKilled = V.bossDone; saveS(); }
 
   if (V.bosses.length === 0) {
-    V.bullets.length = 0; V.waves.length = 0; V.snakes.length = 0;
+    V.bullets.length = 0; V.waves.length = 0; V.curves.length = 0;
     bossbar.classList.remove('on');
     // 这一波清空了，推进模式
     if (GAME_MODE === 'endless') {
@@ -1372,7 +2171,7 @@ function defeatBoss(B) {
     }
   } else {
     // 还有 Boss 在场：更新 bossbar 计数
-    document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
+    document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' 个';
   }
 }
 
@@ -1458,13 +2257,29 @@ function showEndlessTitle(mainText, starText) {
 function hitPlayer(dmg, fromBoss) {
   const now = performance.now();
   if (now < invincibleUntil) return;
-  lives--; updateHud();
+  /* M6b：薯片护盾 —— 身体两侧各一片，每片各抵挡 1 次攻击 */
+  if (V.m6Shield > 0) {
+    V.m6Shield--;
+    V.m6ShieldFx = .7;
+    try { playCrunch(); } catch (e) { }
+    for (let i = 0; i < 22; i++) V.parts.push({ x: player.x, y: player.y, vx: rnd(-220, 220), vy: rnd(-220, 220), r: rnd(2, 6), life: rnd(.3, .6), c: '#ffe28a' });
+    toast(V.m6Shield > 0 ? '🛡 一片薯片碎了，还剩 1 片护盾' : '🛡 薯片护盾全部碎裂！攻击被挡下', true);
+    return;
+  }
   beep('death');
   V.combo = 0;
   V.hurtFlash = 1;                 // 触发全屏扣血闪红特效
-  if (lives <= 0) return endGame(false);
-  player.r = Math.max(START_SIZE, player.r * (fromBoss ? 0.9 : 0.95));
-  invincibleUntil = now + 1800;
+  /* M4：血量制生命 —— 按点数扣血，lives 恒为 1（活着）兼容原版 UI，
+     死亡时 lives=0 触发原版结算流程 */
+  V.hp = Math.max(0, V.hp - (dmg || 1));
+  lives = V.hp > 0 ? 1 : 0;
+  /* M4：受到攻击 → 打断 Boss3 的持续拉拽（需求：只有受击或离开范围才停） */
+  if (V.bosses) for (const B of V.bosses) if (B.beam) B.beamStop = 1;
+  updateHud();
+  if (V.hp <= 0) return endGame(false);
+  /* M11：受击惩罚减轻 —— Boss 撞击只缩 6%、被鱼咬缩 3%（原 10% / 5%） */
+  player.r = Math.max(START_SIZE, player.r * (fromBoss ? 0.94 : 0.97));
+  invincibleUntil = now + 2400;        /* M11：无敌 1.8s → 2.4s */
 }
 
 /* ------------------------------------------------------------ 10. 钩子 */
@@ -1475,6 +2290,11 @@ const _updateHud = updateHud;
 updateHud = function () {
   if (lives > MAX_LIVES) lives = MAX_LIVES;
   if (lives < 0) lives = 0;
+  /* M4：血量制 —— 红心按血量比例显示（满血=满心，残血=黑心居多） */
+  if (V && typeof MAX_LIVES === 'number') {
+    const hearts = Math.ceil(V.hp / V.maxHp * MAX_LIVES);
+    lives = clamp(hearts, V.hp > 0 ? 1 : 0, MAX_LIVES);
+  }
   const r = _updateHud.apply(this, arguments);
   // 难度标签：无尽模式在难度旁加鲜红「无尽」+ 当前星数 + 历史最高星数
   try {
@@ -1491,17 +2311,23 @@ updateHud = function () {
   return r;
 };
 
-/* 原版吃鱼音效音量偏大（原值 0.9），这里调小，让 Boss 出场音更突出；并叠加全局音量 */
-const EAT_VOLUME = .22;
+/* 原版吃鱼音效音量 0.9。M9：用户反馈笑声重叠太吵 ——
+   收紧为「最多同时 1 个 + 最小间隔 500ms」，上一声没放完绝不叠新声 */
+const EAT_VOLUME = .9;
+let _lastEatAt = 0;
 const _playEat = playEat;
 playEat = function () {
   if (GAME_VOL <= 0) return;               // 静音时不播
+  const nowMs = performance.now();
+  if (nowMs - _lastEatAt < 500) return;    // M9：间隔 130ms → 500ms
+  while (eatVoices.length >= 1) { const v = eatVoices.shift(); try { v.pause(); } catch (e) { } }   // M9：最多 1 个
+  _lastEatAt = nowMs;
   _playEat.apply(this, arguments);
   const a = eatVoices[eatVoices.length - 1];
-  if (a) a.volume = EAT_VOLUME * GAME_VOL;
+  if (a) a.volume = Math.min(1, EAT_VOLUME * GAME_VOL);
 };
 
-/* 原版 beep（死亡 / 胜利）音量偏大，这里换成低音量版本（逻辑与原版一致，只压小音量），并叠加全局音量 */
+/* 原版 beep（死亡 / 胜利）音量恢复为原值 0.22（不再压到 0.13），只叠加全局音量 */
 beep = function (type) {
   try {
     if (GAME_VOL <= 0) return;
@@ -1513,7 +2339,7 @@ beep = function (type) {
       o.type = 'sawtooth';
       o.frequency.setValueAtTime(220, now);
       o.frequency.exponentialRampToValueAtTime(55, now + 0.35);
-      g.gain.setValueAtTime(0.13 * GAME_VOL, now);
+      g.gain.setValueAtTime(0.22 * GAME_VOL, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
       o.start(now); o.stop(now + 0.42);
     } else {
@@ -1521,7 +2347,7 @@ beep = function (type) {
       o.frequency.setValueAtTime(520, now);
       o.frequency.setValueAtTime(660, now + 0.12);
       o.frequency.setValueAtTime(880, now + 0.26);
-      g.gain.setValueAtTime(0.13 * GAME_VOL, now);
+      g.gain.setValueAtTime(0.22 * GAME_VOL, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
       o.start(now); o.stop(now + 0.65);
     }
@@ -1534,7 +2360,8 @@ beep = function (type) {
    手机屏幕小，同样 1.45 倍会显得地图很局促 —— 小屏自动加大到 2.4 倍，
    体感与电脑端的 1.45 倍接近；电脑端保持不变。 */
 function worldScale() {
-  return (Math.min(innerWidth, innerHeight) < 500 || innerWidth < 700) ? 3.0 : 1.45;
+  /* M4：地图扩大 —— 桌面 1.45 → 1.95，小屏 3.0 → 3.6，给 Boss3 拉人技能留出范围 */
+  return (Math.min(innerWidth, innerHeight) < 500 || innerWidth < 700) ? 3.6 : 1.95;
 }
 const cam = { x: 0, y: 0 };
 function updateCam() {
@@ -1596,14 +2423,190 @@ if (typeof DIFFS !== 'undefined' && DIFFS) {
   });
 }
 
+/* ================= M1 视觉动效升级 =========================================
+   1) 新海底背景图（V2_BG_SRC 由 HTML 素材块注入，cover 铺屏 + 轻视差）
+   2) 水面动效：移动波光斑 / 摇曳光柱 / 上升气泡（全部扩展层自绘）
+   3) 原版 drawBackground 代码零改动 —— 背景图加载失败时自动回落原版 */
+const V2_BG = new Image();
+if (typeof V2_BG_SRC === 'string' && V2_BG_SRC) V2_BG.src = V2_BG_SRC;
+const v2Bubbles = [];
+let v2BubLast = 0;
+
+/* ============================================================ M8 性能优化
+   掉帧主因：每帧重建渐变对象（分配 churn → GC 卡顿）、每条鱼 shadowBlur、
+   粒子/气泡无上限。对策：渐变缓存、光斑预渲染成离屏贴图、实体数量封顶。 */
+const M8_CACHE = { dgH: 0, dg: null, pillarH: 0, pillar: null, tailGradKey: '', tailGrad: null };
+const M8_MAX_PARTS = 320, M8_MAX_BUBBLES = 40;
+function m8CapParts() {
+  if (V && V.parts && V.parts.length > M8_MAX_PARTS) V.parts.splice(0, V.parts.length - M8_MAX_PARTS);
+}
+function m8BottomGradient() {
+  if (M8_CACHE.dgH !== innerHeight || !M8_CACHE.dg) {
+    const dg = ctx.createLinearGradient(0, innerHeight * .55, 0, innerHeight);
+    dg.addColorStop(0, 'rgba(4,32,54,0)'); dg.addColorStop(1, 'rgba(4,32,54,.42)');
+    M8_CACHE.dg = dg; M8_CACHE.dgH = innerHeight;
+  }
+  return M8_CACHE.dg;
+}
+function m8PillarGradient() {
+  if (M8_CACHE.pillarH !== innerHeight || !M8_CACHE.pillar) {
+    const g = ctx.createLinearGradient(0, 0, 0, innerHeight);
+    g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    M8_CACHE.pillar = g; M8_CACHE.pillarH = innerHeight;
+  }
+  return M8_CACHE.pillar;
+}
+/* 柔光椭圆预渲染：一次性画到离屏画布，之后每帧 drawImage（比 7 次 createRadialGradient 便宜一个量级） */
+const M8_SPOT = (function () {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const c2 = cv.getContext('2d');
+  const g = c2.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(190,235,255,.085)'); g.addColorStop(1, 'rgba(190,235,255,0)');
+  c2.fillStyle = g; c2.fillRect(0, 0, 128, 128);
+  return cv;
+})();
+
+/* ============================================================ M12 性能优化
+   掉帧主因之二是 shadowBlur：每次绘制都要做一遍高斯模糊，手机 GPU 上极贵。
+   方块的辉光、弹幕的光晕每帧加起来能有 20+ 次 shadowBlur（12 个方块 + 十几发弹幕）。
+   对策：按颜色预渲染一张柔光贴图并缓存，之后用 drawImage 叠加，视觉几乎无差。 */
+const M12_GLOW = {};
+function m12Glow(color) {
+  let cv = M12_GLOW[color];
+  if (cv) return cv;
+  cv = document.createElement('canvas'); cv.width = cv.height = 96;
+  const c2 = cv.getContext('2d');
+  let rgb = '160,220,255';
+  if (color && color[0] === '#') {
+    const h = color.length === 4
+      ? color[1] + color[1] + color[2] + color[2] + color[3] + color[3]
+      : color.slice(1, 7);
+    const n = parseInt(h, 16);
+    rgb = ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+  }
+  const g = c2.createRadialGradient(48, 48, 0, 48, 48, 48);
+  g.addColorStop(0, 'rgba(' + rgb + ',.62)');
+  g.addColorStop(.45, 'rgba(' + rgb + ',.26)');
+  g.addColorStop(1, 'rgba(' + rgb + ',0)');
+  c2.fillStyle = g; c2.fillRect(0, 0, 96, 96);
+  M12_GLOW[color] = cv;
+  return cv;
+}
+
+function drawV2Water(t) {
+  /* --- 波光斑：预渲染贴图缩放绘制（M8：替代每帧 7 个径向渐变） --- */
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 7; i++) {
+    const px = (i * 197 + Math.sin(t / 2600 + i * 2.1) * 90 + t / 55) % (innerWidth + 260) - 130;
+    const py = innerHeight * (.14 + .11 * (i % 3)) + Math.sin(t / 1900 + i) * 26;
+    const rw = 110 + (i % 4) * 46, rh = 13 + (i % 3) * 7;
+    ctx.save(); ctx.translate(px, py); ctx.rotate(-.16 + (i % 2) * .1); ctx.scale(1, rh / rw);
+    ctx.drawImage(M8_SPOT, px - rw, py - rw, rw * 2, rw * 2);
+    ctx.restore();
+  }
+  ctx.restore();
+  /* --- 摇曳光柱：渐变缓存（M8），仅高度变化时重建 --- */
+  ctx.save();
+  ctx.globalAlpha = .10;
+  const pg = m8PillarGradient();
+  ctx.fillStyle = pg;
+  for (let i = 0; i < 4; i++) {
+    const x = (i * innerWidth / 3.6 + Math.sin(t / 3400 + i * 1.7) * 70) - cam.x * .04;
+    const w0 = 60 + i * 18, sway = Math.sin(t / 2200 + i) * 90;
+    ctx.beginPath();
+    ctx.moveTo(x, -20); ctx.lineTo(x + w0, -20);
+    ctx.lineTo(x + w0 + 190 + sway, innerHeight); ctx.lineTo(x + 40 + sway, innerHeight);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  /* --- 上升气泡（M8：数量封顶 40，防长时间游玩内存缓涨） --- */
+  if (t - v2BubLast > 90 && Math.random() < .09) {
+    v2BubLast = t;
+    if (v2Bubbles.length < M8_MAX_BUBBLES)
+      v2Bubbles.push({ x: Math.random() * innerWidth, y: innerHeight + 12, r: 2 + Math.random() * 5, s: 28 + Math.random() * 55 });
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.38)'; ctx.lineWidth = 1.2;
+  for (let i = v2Bubbles.length - 1; i >= 0; i--) {
+    const b = v2Bubbles[i];
+    b.y -= b.s / 60; b.x += Math.sin(t / 500 + b.y / 55) * .6;
+    if (b.y < -14) { v2Bubbles.splice(i, 1); continue; }
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.stroke();
+  }
+}
+function drawV2Background(t) {
+  if (V2_BG.complete && V2_BG.naturalWidth) {
+    /* cover 铺满视口，四周留 70px 余量做视差偏移（镜头移动时背景缓动，制造纵深） */
+    const iw = V2_BG.naturalWidth, ih = V2_BG.naturalHeight, M = 70;
+    const k = Math.max((innerWidth + M * 2) / iw, (innerHeight + M * 2) / ih);
+    const dw = iw * k, dh = ih * k;
+    const ox = -M - clamp(cam.x * .05, -M, M);
+    const oy = -M - clamp(cam.y * .05, -M, M);
+    ctx.drawImage(V2_BG, ox, oy, dw, dh);
+    /* 底部加深，保证 HUD 与鱼群可读性（M8：渐变缓存） */
+    ctx.fillStyle = m8BottomGradient(); ctx.fillRect(0, 0, innerWidth, innerHeight);
+    drawV2Water(t);
+  } else {
+    _drawBackground(t);   // 背景图未就绪（如离线首帧）→ 回落原版渐变背景
+  }
+}
 const _drawBackground = drawBackground;
 drawBackground = function (t) {
   updateCam();                                   // 每帧最开始更新镜头
-  return _drawBackground.apply(this, arguments);
+  drawV2Background(t);
 };
+/* M3：第二大生物（tier 3）贴图替换为生肖黏土动物（9 只），大小/密度/总数不变 */
+const ZODIAC_IMGS = [];
+(function () {
+  try {
+    if (typeof V2_ZODIAC_SRC === 'undefined') return;
+    for (const k in V2_ZODIAC_SRC) {
+      const im = new Image();
+      im.src = V2_ZODIAC_SRC[k];
+      ZODIAC_IMGS.push(im);
+    }
+  } catch (e) { }
+})();
 const _drawFish = drawFish;
 drawFish = function (f, t) {
+  if (!f) return _drawFish.apply(this, arguments);
+  /* M8：视口裁剪 —— 屏幕外的鱼直接跳过绘制（相机跟随 + 地图 1.95x~3.6x，
+     同屏外最多可能有 2/3 的鱼在白画） */
+  const M8_VM = 90;
+  const vx0 = cam.x - M8_VM, vx1 = cam.x + innerWidth + M8_VM;
+  const vy0 = cam.y - M8_VM, vy1 = cam.y + innerHeight + M8_VM;
+  if (f.x + f.r * 2 < vx0 || f.x - f.r * 2 > vx1 || f.y + f.r * 2 < vy0 || f.y - f.r * 2 > vy1) return;
+  /* M3：生肖换装对象改为 tier 1（比蛋大一档的小型鱼）—— 体型「比蛋大一点点」；
+     tier 3 恢复原版奶龙。每条鱼随机固定一只生肖，绘制布局与原版完全一致 */
+  if (f.tier === 1 && ZODIAC_IMGS.length && ZODIAC_IMGS[0].complete) {
+    ctx.save(); ctx.translate(-cam.x, -cam.y);
+    const r = f.r, y = f.y + Math.sin(t / 400 + f.wobble) * f.wobbleAmp * .15;
+    const col = dangerColor(f);
+    ctx.save(); ctx.globalAlpha = .35; ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(1.5, r * .08);
+    ctx.beginPath(); ctx.ellipse(f.x, y + r * 1.05, r * 1.15, r * .36, 0, 0, TAU); ctx.stroke();
+    ctx.restore();
+    if (f.zod === undefined) f.zod = Math.floor(Math.random() * ZODIAC_IMGS.length);
+    const img = ZODIAC_IMGS[f.zod % ZODIAC_IMGS.length];
+    ctx.save();
+    ctx.translate(f.x, y); ctx.scale(f.dir, 1); ctx.rotate(Math.sin(t / 260 + f.wobble) * .08);
+    const th = r * 2.7, tw = th * (img.naturalWidth || 1) / (img.naturalHeight || 1);
+    /* M9 修复：M8 误把 globalAlpha .28 作用到了整张贴图上导致鱼变半透明。
+       现在贴图全色绘制，仅危险色描边圈降透明度 */
+    if (img.complete && img.naturalWidth) ctx.drawImage(img, -tw / 2, -th * .52, tw, th);
+    ctx.strokeStyle = col; ctx.globalAlpha = .28; ctx.lineWidth = Math.max(1.2, r * .12);
+    ctx.beginPath(); ctx.ellipse(0, -th * .1, tw * .46, th * .42, 0, 0, TAU); ctx.stroke();
+    ctx.restore(); ctx.restore();
+    return;
+  }
   ctx.save(); ctx.translate(-cam.x, -cam.y);
+  /* M1 视觉：逐鱼摆尾 —— 绕鱼心做小幅摇摆（每条鱼随机相位），加轻微呼吸缩放 */
+  if (f) {
+    if (f.seed === undefined) f.seed = Math.random() * 10;
+    const sway = Math.sin(t / 240 + f.seed * 7) * .07;
+    const pulse = 1 + Math.sin(t / 300 + f.seed * 5) * .025;
+    ctx.translate(f.x, f.y); ctx.rotate(sway); ctx.scale(pulse, 2 - pulse); ctx.translate(-f.x, -f.y);
+  }
   _drawFish.apply(this, arguments);
   ctx.restore();
 };
@@ -1639,51 +2642,180 @@ drawPlayer = function (t) {
   drawPlayerV2(t);
   ctx.restore();
 };
-function drawPlayerV2(t) {
-  const p = player;
+/* M2.5：动态尾巴 —— 原图建模不可改动，尾巴为渲染层新增。
+   皮肤主色采样（缓存于 Image 对象上），任何皮肤自动适配 */
+const _tailRGBMap = new Map();
+function tailRGB(img) {
+  if (!img) return [232, 192, 99];
+  if (_tailRGBMap.has(img)) return _tailRGBMap.get(img);
+  let rgb = [232, 192, 99];
+  try {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 32;
+    const c2 = cv.getContext('2d'); c2.drawImage(img, 0, 0, 32, 32);
+    const d = c2.getImageData(8, 18, 16, 12).data;        // 身体下半区采样
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+    if (n) rgb = [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  } catch (e) { }
+  _tailRGBMap.set(img, rgb);
+  return rgb;
+}
+function drawSealTail(t, p, m, bob) {
+  const img = equippedImg();
+  const [r0, g0, b0] = tailRGB(m ? img : null);
+  /* M8：摆尾相位与身体 sway（t/190）完全同源 —— 尾巴和身体是一根弹簧，
+     不再各摆各的；冲刺时叠加高频甩动，二阶正弦让摆动有回弹感而非机械往复 */
+  const swayPh = Math.sin(t / 190);
+  const wag = swayPh * .6 + (V && V.dashT > 0 ? Math.sin(t / 60) * .3 : 0) + Math.sin(t / 95) * .08;
+  const k = m ? (p.r * 2.35) / m.size : 0;
+  /* M8：尾根扎进身体内部（贴图后 24% 处而非 30%）—— 根部被身体贴图压住，
+     接缝天然不可见；尾根加宽 1.35 倍，与身体后缘平滑融合 */
+  const ax = m ? -m.size * .24 * k : -p.r * .58;
+  const ay = (m ? m.size * .34 * k : p.r * .70) + bob;
+  const len = (m ? m.size * .50 * k : p.r * 1.25);
+  const w = p.r * .32;                                     // M8：尾根半宽 ×1.35
+  ctx.save();
+  ctx.translate(ax, ay);
+  ctx.rotate(.75 + wag * .45);
+  /* M8：渐变缓存 —— 颜色不变时复用同一渐变对象 */
+  const gk = r0 + ',' + g0 + ',' + b0;
+  if (M8_CACHE.tailGradKey !== gk) {
+    const grad = ctx.createLinearGradient(0, 0, 0, len);
+    grad.addColorStop(0, 'rgb(' + r0 + ',' + g0 + ',' + b0 + ')');
+    grad.addColorStop(1, 'rgb(' + Math.max(0, r0 - 26) + ',' + Math.max(0, g0 - 26) + ',' + Math.max(0, b0 - 26) + ')');
+    M8_CACHE.tailGrad = grad; M8_CACHE.tailGradKey = gk;
+  }
+  ctx.fillStyle = M8_CACHE.tailGrad;
+  /* M8：尾根关节盖片 —— 与身体同色的圆角楔形垫在尾根下，
+     把「贴图边缘 → 尾巴」的硬接缝变成同色过渡 */
+  ctx.fillStyle = 'rgb(' + r0 + ',' + g0 + ',' + b0 + ')';
+  ctx.beginPath(); ctx.ellipse(w * .2, -len * .04, w * 1.5, w * 1.15, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = M8_CACHE.tailGrad;
+  ctx.beginPath();
+  ctx.moveTo(-w, 0);
+  ctx.quadraticCurveTo(-w * 1.25, len * .55, w * .1 + wag * w * .6, len);   // 外缘弧线到尾尖（尾尖随摆动横移）
+  ctx.quadraticCurveTo(w * .95, len * .5, w, 0);                            // 内缘弧线收回尾根
+  ctx.closePath();
+  ctx.fill();
+  /* 尾根与身体衔接的阴影，避免出现硬接缝 */
+  ctx.strokeStyle = 'rgba(' + Math.max(0, r0 - 45) + ',' + Math.max(0, g0 - 45) + ',' + Math.max(0, b0 - 45) + ',.35)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlayerV2(t) {  const p = player;
   const sk = skinById(S.equipped);
   const img = equippedImg();
   const m = metric(img);
   ctx.save();
   ctx.translate(p.x, p.y);
-  /* 无敌光环：受伤后 / 冲刺中 / 升级选完的缓冲期都会亮起，让「无敌」看得见 */
+  /* 无敌光环 → M3 持续金身：全程恒定金色光环（不再渐隐），不再闪烁虚影 */
   const invLeft = invincibleUntil - performance.now();
-  if (invLeft > 0 && invLeft < 1e8) {
-    const a = Math.min(1, invLeft / 800) * .5 + .25;
+  const isInv = invLeft > 0 && invLeft < 1e8;
+  if (isInv) {
     const rr = p.r * 1.5 + Math.sin(t / 150) * 2.5;
     ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU);
-    ctx.strokeStyle = 'rgba(255,213,74,' + a + ')'; ctx.lineWidth = 3.5; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,213,74,.8)'; ctx.lineWidth = 3.5; ctx.stroke();
     ctx.beginPath(); ctx.arc(0, 0, rr * .8, 0, TAU);
-    ctx.strokeStyle = 'rgba(255,255,255,' + (a * .5) + ')'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.5; ctx.stroke();
   }
   ctx.scale(p.dir, 1);
+  /* M5b：旋转水波 —— 海豹原地绕纵轴快速自转 + 青色螺旋水带缠绕身体 + 气泡泡沫（参考视频） */
+  const spinning = V && V.spinT > 0;
+  const prSpin = spinning ? 1 - V.spinT / SPIN_ATK.dur : 0;
+  if (spinning) drawSpinRibbon(prSpin, true);            // 背侧水带（画在身体后面）
+  ctx.save();                                            // 自转只作用于身体
+  if (spinning) {
+    /* 绕纵轴自转：水平缩放模拟——身体随 cos 变窄/翻面（参考视频效果），而非画布旋转 */
+    const cs = Math.cos(prSpin * TAU * 3);
+    const sx = Math.abs(cs) < .18 ? (cs < 0 ? -.18 : .18) : cs;
+    ctx.scale(sx, 1);
+  }
+  /* M1 视觉：动态 2D —— 呼吸浮动 + 摆尾扭切 + 冲刺拉伸，游动感来自三者的叠加 */
   const bob = Math.sin(t / 300) * 3;
   ctx.rotate(Math.sin(t / 350) * 0.06);
-  if (performance.now() < invincibleUntil && Math.floor(t / 120) % 2 === 0) ctx.globalAlpha = 0.4;
+  const sway = Math.sin(t / 190) * 0.055;                       // 摆尾：横向扭切
+  ctx.transform(1, 0, sway, 1, 0, 0);
+  if (V && V.dashT > 0) ctx.scale(1.08, .92);                   // 冲刺：前拉伸后压扁
+  /* M5：删除 M2 的「张嘴吃鱼」动画（需求：里程2 里的吃东西动画删除） */
+  /* M3：无敌不再用闪烁虚影（移除 globalAlpha 闪烁），金身效果见上方光环+辉光 */
+  drawSealTail(t, p, m, bob);
   if (m) {
     const k = (p.r * 2.35) / m.size;
     const dw = m.w * k, dh = m.h * k;
-    if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
-    ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
+  /* M3：无敌期间金色辉光包裹身体（替代原虚影闪烁），与皮肤辉光同款效果 */
+  if (isInv) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 20; }
+  else if (sk.glow) { ctx.shadowColor = sk.glow; ctx.shadowBlur = 20; }
+  ctx.drawImage(img, -m.cx * k, -m.cy * k + bob, dw, dh);
+  ctx.shadowBlur = 0;
   } else {
     ctx.fillStyle = '#ffd54a';
     ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * .8, 0, 0, TAU); ctx.fill();
+  }
+  ctx.restore();                                         // 结束自转
+  if (spinning) {
+    drawSpinRibbon(prSpin, false);                       // 前侧水带（画在身体上面）
+    drawSpinBubbles(prSpin);                             // 上升气泡 + 白色泡沫
   }
   ctx.restore();
 }
 
 function drawBossLayer(t) {
   if (!V) return;
-  // 音浪（袋鼠 DJ）：加粗 + 双层描边 + 泛光，让弹幕边缘一目了然
+  /* M6：皮肤技能世界层（护盾/道具/弹丸，画在 Boss 之下、玩家之下） */
+  drawM6World(t);
+  /* M2：袋鼠 DJ 音浪 → 水涟漪动效（参考 AE 水涟漪素材）：
+     三圈同心涟漪 + 正弦波纹扰动 + 青蓝辉光 + 白色高光芯，纵向略压扁模拟水面透视 */
   for (const w of V.waves) {
     ctx.save();
-    ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, TAU);
-    ctx.shadowColor = 'rgba(255,40,80,.95)'; ctx.shadowBlur = 18;
-    ctx.strokeStyle = 'rgba(255,45,90,' + (.9 * w.a) + ')';
-    ctx.lineWidth = 11 * w.a + 4; ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(255,225,235,' + (.85 * w.a) + ')';
-    ctx.lineWidth = 3 * w.a + 1; ctx.stroke();
+    for (let ring = 0; ring < 3; ring++) {
+      const rr = w.r * (1 - ring * .18);
+      if (rr <= 4) break;
+      const aMul = w.a * (1 - ring * .3);
+      const seg = 46;
+      ctx.beginPath();
+      for (let k = 0; k <= seg; k++) {
+        const th = k / seg * TAU;
+        const wob = Math.sin(th * (5 + ring * 2) + w.r / 26 + ring * 2.2) * (4 + ring * 2.5);
+        const x = w.x + Math.cos(th) * (rr + wob);
+        const y = w.y + Math.sin(th) * (rr + wob) * .92;
+        k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      /* M12：只有最外圈做辉光模糊（原来 3 圈各做一次 shadowBlur，一圈涟漪 3 次高斯模糊） */
+      if (ring === 0) { ctx.shadowColor = 'rgba(80,190,255,.9)'; ctx.shadowBlur = 16; }
+      ctx.strokeStyle = 'rgba(110,210,255,' + (.72 * aMul) + ')';
+      ctx.lineWidth = (ring === 0 ? 6 : 3.5) * w.a + 1;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(235,252,255,' + (.5 * aMul) + ')';
+      ctx.lineWidth = 1.6; ctx.stroke();
+    }
+    ctx.restore();
+  }
+  /* M4：函数引力线 —— Boss3 拉人时画一条正弦波动的函数感线条（Boss→玩家） */
+  for (const B of V.bosses) {
+    if (!B.beam || !player) continue;
+    const dx = player.x - B.x, dy = player.y - B.y, d = Math.hypot(dx, dy) || 1;
+    const ang = Math.atan2(dy, dx), nx = -Math.sin(ang), ny = Math.cos(ang);
+    const t = performance.now() / 1000;
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.beginPath();
+      const N = 40;
+      for (let k = 0; k <= N; k++) {
+        const u = k / N, base = u * d;
+        const wob = Math.sin(u * 10 - t * 9) * 14 * (1 - u * .3);
+        const x = B.x + Math.cos(ang) * base + nx * wob;
+        const y = B.y + Math.sin(ang) * base + ny * wob;
+        k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      if (pass === 0) { ctx.strokeStyle = 'rgba(190,225,255,.3)'; ctx.lineWidth = 10; }
+      else { ctx.strokeStyle = 'rgba(240,250,255,.9)'; ctx.lineWidth = 3; }
+      ctx.stroke();
+    }
     ctx.restore();
   }
   for (const B of V.bosses) {
@@ -1705,8 +2837,14 @@ function drawBossLayer(t) {
     for (const o of B.orbs) {
       if (!o.alive) continue;
       const open = o.state === 'open', sr = o.r;
+      /* M12：辉光改用预渲染贴图（原为每帧 shadowBlur 12~24，方块多时开销明显） */
+      const gc = m12Glow(open ? '#6ee7a0' : D.orbC);
+      ctx.save();
+      ctx.globalAlpha = open ? .95 : .6;
+      const gs = sr * (open ? 6.4 : 5.2);
+      ctx.drawImage(gc, o.x - gs / 2, o.y - gs / 2, gs, gs);
+      ctx.restore();
       ctx.save(); ctx.translate(o.x, o.y); ctx.scale(1 + Math.sin(B.t * 8) * .05, 1 + Math.sin(B.t * 8) * .05);
-      ctx.shadowColor = open ? '#6ee7a0' : D.orbC; ctx.shadowBlur = open ? 24 : 12;
       ctx.fillStyle = open ? 'rgba(10,44,32,.95)' : 'rgba(30,16,24,.95)';
       const w = sr * 2.1, h = sr * 1.7, rr = sr * .34;
       ctx.beginPath();
@@ -1714,14 +2852,19 @@ function drawBossLayer(t) {
       ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, rr); ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, rr);
       ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, rr); ctx.closePath(); ctx.fill();
       ctx.lineWidth = 2.5; ctx.strokeStyle = open ? '#6ee7a0' : D.orbC; ctx.stroke();
-      ctx.shadowBlur = 0;
       /* 核心物上方飘的图标：袋鼠 DJ 换成「外卖袋」贴图，其余 Boss 沿用符号 */
       if (D.key === 'dj' && ORB_IMG.complete && ORB_IMG.naturalWidth) {
         const ih = sr * 2.35, iw = ih * (ORB_IMG.naturalWidth / ORB_IMG.naturalHeight);
         ctx.save();
         ctx.globalAlpha = open ? 1 : .94;
-        if (open) { ctx.shadowColor = '#6ee7a0'; ctx.shadowBlur = 22; }
         ctx.drawImage(ORB_IMG, -iw / 2, -sr * 2.02 - ih / 2, iw, ih);
+        ctx.restore();
+      } else if (D.key === 'moyu' && LATIAO_IMG.complete && LATIAO_IMG.naturalWidth) {
+        /* Boss2 辣条方块：用辣条贴图（复用辣条子弹素材） */
+        const ih = sr * 2.1, iw = ih * (LATIAO_IMG.naturalWidth / LATIAO_IMG.naturalHeight);
+        ctx.save();
+        ctx.globalAlpha = open ? 1 : .94;
+        ctx.drawImage(LATIAO_IMG, -iw / 2, -sr * 2.02 - ih / 2, iw, ih);
         ctx.restore();
       } else {
         ctx.font = sr * 1.05 + 'px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1737,35 +2880,60 @@ function drawBossLayer(t) {
       }
     }
   }
-  // 蛇形函数线（画成一条会发光的曲线）
-  if (V.snakes.length) {
+  /* M2：函数轨迹线 —— 普通线条画风：细白线 + 淡蓝辉光，头部小亮点 */
+  if (V.curves.length) {
     ctx.save();
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    for (const s of V.snakes) {
+    for (const s of V.curves) {
       const n = s.pts.length;
       if (n < 2) continue;
       for (let pass = 0; pass < 2; pass++) {
         ctx.beginPath();
         ctx.moveTo(s.pts[0].x, s.pts[0].y);
         for (let k = 1; k < n; k++) ctx.lineTo(s.pts[k].x, s.pts[k].y);
-        if (pass === 0) { ctx.strokeStyle = 'rgba(126,200,255,.26)'; ctx.lineWidth = s.w * 2.7; }
-        else { ctx.strokeStyle = '#bfe6ff'; ctx.lineWidth = s.w * .95; }
+        if (pass === 0) { ctx.strokeStyle = 'rgba(190,225,255,.24)'; ctx.lineWidth = 9; }
+        else { ctx.strokeStyle = 'rgba(242,250,255,.95)'; ctx.lineWidth = 3; }
         ctx.stroke();
       }
       const h = s.pts[n - 1];
-      ctx.beginPath(); ctx.arc(h.x, h.y, s.w * 1.15, 0, TAU);
-      ctx.fillStyle = '#eaf6ff'; ctx.fill();
+      ctx.beginPath(); ctx.arc(h.x, h.y, 3.6, 0, TAU);
+      ctx.fillStyle = '#ffffff'; ctx.fill();
     }
     ctx.restore();
   }
-  // 弹幕
+  /* M2：弹幕 → 辣条贴图（比原子弹大一点），沿速度方向旋转；贴图未就绪回落圆形
+     M4：积分号弹幕 —— 用 INTEGRAL_IMG 贴图做 360° 旋转（动效而非纸片翻转） */
   for (const b of V.bullets) {
-    ctx.save(); ctx.shadowColor = b.c; ctx.shadowBlur = 14;
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fillStyle = b.c; ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.beginPath(); ctx.arc(b.x - b.r * .28, b.y - b.r * .3, b.r * .34, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
-    ctx.restore();
+    if (b.integral && INTEGRAL_IMG.complete && INTEGRAL_IMG.naturalWidth) {
+      const ih = b.r * 3.1, iw = ih * (INTEGRAL_IMG.naturalWidth / INTEGRAL_IMG.naturalHeight);
+      /* M12：辉光改预渲染贴图（原 shadowBlur 12 每发都做一次模糊） */
+      const gs = b.r * 7;
+      ctx.save(); ctx.globalAlpha = .75;
+      ctx.drawImage(m12Glow('#78d2ff'), b.x - gs / 2, b.y - gs / 2, gs, gs);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.spin || 0);
+      ctx.drawImage(INTEGRAL_IMG, -iw / 2, -ih / 2, iw, ih);
+      ctx.restore();
+    } else if (LATIAO_IMG.complete && LATIAO_IMG.naturalWidth) {
+      const ih = b.r * 2.9, iw = ih * (LATIAO_IMG.naturalWidth / LATIAO_IMG.naturalHeight);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(Math.atan2(b.vy, b.vx) + Math.PI / 2);
+      ctx.drawImage(LATIAO_IMG, -iw / 2, -ih / 2, iw, ih);
+      ctx.restore();
+    } else {
+      const gs = b.r * 5;
+      ctx.save(); ctx.globalAlpha = .85;
+      ctx.drawImage(m12Glow(b.c), b.x - gs / 2, b.y - gs / 2, gs, gs);
+      ctx.restore();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fillStyle = b.c; ctx.fill();
+      ctx.beginPath(); ctx.arc(b.x - b.r * .28, b.y - b.r * .3, b.r * .34, 0, TAU);
+      ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
+      ctx.restore();
+    }
   }
   // 粒子
   for (let i = V.parts.length - 1; i >= 0; i--) {
@@ -1781,9 +2949,22 @@ function drawBossLayer(t) {
 
 // 重置 / 结算
 const _reset = reset;
-reset = function () { _reset.apply(this, arguments); newV(); V.prevLives = lives; bossbar.classList.remove('on'); lvov.classList.add('hidden'); };
+reset = function () {
+  /* M4：reset 时 cfg 已是新难度（原版 reset 会读 cfg），据此确定血量上限 */
+  try {
+    if (typeof DIFFS !== 'undefined' && DIFFS) {
+      for (const k in DIFFS) if (DIFFS[k] === cfg) { CUR_DIFF = k; break; }
+    }
+  } catch (e) { }
+  _reset.apply(this, arguments);
+  newV();
+  V.prevLives = lives;
+  bossbar.classList.remove('on'); lvov.classList.add('hidden');
+  hpbox.classList.remove('on'); upbox.innerHTML = '';
+};
 const _endGame = endGame;
 endGame = function (win) {
+  hpbox.classList.remove('on');   /* M4：结算时隐藏血条 */
   /* 关键规则：长到目标体型【不再直接通关】——
      必须把全部 Boss 打完才算赢，否则体型到顶也只是「卡住」继续玩下去。 */
   if (win && V && !V.allBossDown) {
@@ -1817,7 +2998,30 @@ endGame = function (win) {
   } catch (e) { }
 };
 const _start = start;
-start = function () { _start.apply(this, arguments); lastV2 = performance.now(); if (V) V.surviveT = performance.now(); };
+start = function () {
+  /* M4：原版难度按钮直接改 cfg 再 start()，不经过扩展层面板 ——
+     这里反查 cfg 对应的难度键，保证血量上限/积分倍率随难度正确 */
+  try {
+    if (typeof DIFFS !== 'undefined' && DIFFS) {
+      for (const k in DIFFS) if (DIFFS[k] === cfg) { CUR_DIFF = k; break; }
+    }
+  } catch (e) { }
+  _start.apply(this, arguments);
+  lastV2 = performance.now();
+  /* M5c：开局音效（三声上行音阶，原版没有开局提示音） */
+  try { playStartJingle(); } catch (e) { }
+  /* M4：血量按难度重置（原版 reset 可能在 start 之前/之后调用，这里再兜一次） */
+  if (V) {
+    const hp0 = diffStartHp();
+    V.maxHp = hp0;
+    if (!(V.hp > 0) || V.hp > hp0) V.hp = hp0;
+    V.surviveT = performance.now();
+    /* M6：记录开局体型 = 地图最小尺寸（线性代数「变小」技能用） */
+    V.m6MinR = player ? player.r : 26;
+    V.m6PreR = player ? player.r : 26;
+    hpbox.classList.add('on');
+  }
+};
 
 function updateShopCoin() {
   const e = document.getElementById('v2coin'); if (e) e.textContent = fmt(S.coins + (V ? V.coinsRun : 0));
@@ -1829,6 +3033,7 @@ function loopV2(now) {
   requestAnimationFrame(loopV2);
   dtFrame = Math.min(0.05, (now - lastV2) / 1000);
   lastV2 = now;
+  m8CapParts();                       /* M8：粒子上限，防技能连发时内存/绘制量失控 */
   if (state === 'playing') updateV2(dtFrame, now);
   else if (state === 'levelup' && player) {
     try {
@@ -1840,6 +3045,7 @@ function loopV2(now) {
   updateHUD2();
   drawHurtFx(now, dtFrame);      // 扣血特效覆盖层（最上层）
   drawBossIndicator(now);        // Boss 方向指示（屏幕外时边缘箭头）
+  drawM6Bubble();                // M6：线性代数吐槽气泡（屏幕坐标，居中靠上）
 }
 
 /* ---- Boss 方向指示器 -------------------------------------------------------
@@ -1898,10 +3104,30 @@ function drawBossIndicator(now) {
 /* ---- 扣血 / 低血量特效 -----------------------------------------------------
    ① 受伤瞬间：全屏红色渐变闪一下（hurtFlash 衰减）
    ② 只剩 1 颗心且非地狱难度：屏幕四周持续红色渐晕，像「残血警告」 */
+/* M12：低血红晕预渲染 —— 原来残血时每帧都要 createRadialGradient + 两次全屏填充
+   （全屏渐变填充在手机上是实打实的带宽开销），改成一次性画好贴图，之后只做一次 drawImage */
+const M12_VIG = { w: 0, h: 0, cv: null };
+function m12Vignette() {
+  const vw = innerWidth, vh = innerHeight;
+  if (M12_VIG.w === vw && M12_VIG.h === vh && M12_VIG.cv) return M12_VIG.cv;
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, vw); cv.height = Math.max(1, vh);
+  const c2 = cv.getContext('2d');
+  const r = Math.hypot(vw, vh) * .55;
+  const g = c2.createRadialGradient(vw / 2, vh / 2, r * .2, vw / 2, vh / 2, r);
+  g.addColorStop(0, 'rgba(220,20,20,0)');
+  g.addColorStop(0.5, 'rgba(205,15,15,.45)');
+  g.addColorStop(0.8, 'rgba(190,10,10,.8)');
+  g.addColorStop(1, 'rgba(150,5,5,1)');
+  c2.fillStyle = g; c2.fillRect(0, 0, vw, vh);
+  c2.fillStyle = 'rgba(255,30,30,.18)'; c2.fillRect(0, 0, vw, vh);
+  M12_VIG.w = vw; M12_VIG.h = vh; M12_VIG.cv = cv;
+  return cv;
+}
 function drawHurtFx(now, dt) {
   if (!V) return;
   if (V.hurtFlash > 0) V.hurtFlash = Math.max(0, V.hurtFlash - dt * 1.6);
-  const lowHp = state === 'playing' && lives === 1 && cfg && cfg.name !== '地狱';
+  const lowHp = state === 'playing' && V && V.hp <= 30 && cfg && cfg.name !== '地狱';   /* M4：血量制残血阈值 30/100 */
   const flash = V.hurtFlash;
   if (flash <= 0 && !lowHp) return;
 
@@ -1927,17 +3153,10 @@ function drawHurtFx(now, dt) {
   // ② 低血量持续渐晕：四周红色晕圈（明显脉动 + 轻微全屏泛红）
   if (lowHp) {
     const pulse = 0.72 + Math.sin(now / 240) * 0.2;       // 强呼吸脉动
-    const r = Math.hypot(vw, vh) * .55;
-    const g = ctx.createRadialGradient(vw / 2, vh / 2, r * .2, vw / 2, vh / 2, r);
-    g.addColorStop(0, 'rgba(220,20,20,0)');
-    g.addColorStop(0.5, 'rgba(205,15,15,' + (pulse * .45) + ')');
-    g.addColorStop(0.8, 'rgba(190,10,10,' + (pulse * .8) + ')');
-    g.addColorStop(1, 'rgba(150,5,5,' + Math.min(1, pulse * 1.15) + ')');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, vw, vh);
-    // 全屏泛红，随脉动呼吸
-    ctx.fillStyle = 'rgba(255,30,30,' + (pulse * .18) + ')';
-    ctx.fillRect(0, 0, vw, vh);
+    /* M12：贴图 + globalAlpha，替代每帧两次全屏渐变填充 */
+    ctx.globalAlpha = Math.min(1, pulse);
+    ctx.drawImage(m12Vignette(), 0, 0, vw, vh);
+    ctx.globalAlpha = 1;
   }
 
   ctx.restore();
@@ -1946,6 +3165,8 @@ function drawHurtFx(now, dt) {
 function updateV2(dt, now) {
   if (!V) return;
   const P = player;
+  /* M6：皮肤技能状态推进 */
+  updateM6(dt);
 
   /* 体型上限：长到目标体型就停住（此时仍明显小于 Boss）；通关要靠打完 Boss */
   if (P && P.r > WIN_SIZE * .99) P.r = WIN_SIZE * .99;
@@ -1964,6 +3185,7 @@ function updateV2(dt, now) {
     const d = score - V.prevScore;
     V.prevScore = score;
     V.eatCount++;
+    V.mouthT = performance.now();   // M1 视觉：吃鱼瞬间张嘴（张嘴 90ms → 咀嚼闭合 220ms）
     V.combo++; V.comboT = 2.4;
     V.maxCombo = Math.max(V.maxCombo, V.combo);
     V.coinsRun += Math.round(d * 0.01 * (1 + V.up.combo) * coinMul());   // 积分 = 得分 × 0.01 × (1+连击大师) × 难度倍率
@@ -1975,6 +3197,9 @@ function updateV2(dt, now) {
 
   /* --- 冲刺位移 --- */
   if (V.dashCd > 0) V.dashCd -= dt;
+  /* M5：旋转水波技能计时 */
+  if (V.spinCd > 0) V.spinCd -= dt;
+  if (V.spinT > 0) V.spinT -= dt;
   if (V.dashT > 0) {
     V.dashT -= dt;
     P.x = clamp(P.x + V.dashX * 1250 * dt, P.r, W - P.r);
@@ -2010,7 +3235,8 @@ function updateV2(dt, now) {
       if (Math.hypot(f.x - P.x, fy - P.y) < P.r * .85 + f.r * .9) {
         playEat();
         score += Math.round(f.r);
-        P.r += (1.6 * cfg.growthMul) * (f.r / P.r) + .3 * cfg.growthMul;
+        /* M6：线性代数「变小」期间暂停成长，保证 10 秒内保持最小体型 */
+        if (!(V.m6ShrinkT > 0)) P.r += (1.6 * cfg.growthMul) * (f.r / P.r) + .3 * cfg.growthMul;
         fishes.splice(i, 1); spawnFish(false); updateHud();
       }
     }
@@ -2045,15 +3271,83 @@ function updateV2(dt, now) {
   updateBoss(dt);
 }
 
+/* M12：HUD 全量重写为「缓存节点 + 值变化才写 + 15Hz 节流」。
+   原来每帧 10 次 getElementById + 十余次 textContent/style 赋值，
+   在手机上等于每帧强制一次样式重算（掉帧的主要嫌疑之一）。 */
+const M12_HUD = {
+  hpbox: null, coin: null, combo: null, lv: null, hf: null, num: null, num2: null,
+  ub: null, db: null, dbB: null, sb: null, sbB: null,
+  on: false, coinT: '', comboT: '', lvT: '', hfW: '', numT: '', ubH: '',
+  dbT: '', dbCd: null, sbT: '', sbCd: null, at: 0
+};
 function updateHUD2() {
   if (!V) return;
-  const c = document.getElementById('v2coin'); if (c) c.textContent = fmt(S.coins + V.coinsRun);
-  const cm = document.getElementById('v2combo'); if (cm) cm.textContent = V.combo;
-  const lt = document.getElementById('lvt'); if (lt) lt.textContent = 'Lv.' + V.lvl;
-  const db = document.getElementById('dashbtn');
-  if (db) {
-    if (V.dashCd > 0) { db.classList.add('cd'); db.querySelector('b').textContent = V.dashCd.toFixed(1); }
-    else { db.classList.remove('cd'); db.querySelector('b').textContent = '冲刺'; }
+  const now = performance.now();
+  if (now - M12_HUD.at < 66) return;         // 15Hz，HUD 信息量足够
+  M12_HUD.at = now;
+  const H = M12_HUD;
+  if (!H.hf || !H.hf.isConnected) {
+    H.hpbox = document.getElementById('hpbox');
+    H.coin = document.getElementById('v2coin');
+    H.combo = document.getElementById('v2combo');
+    H.lv = document.getElementById('lvt');
+    H.hf = document.getElementById('hpfill');
+    H.num = document.getElementById('hpnum');
+    H.num2 = document.getElementById('hpnum2');
+    H.ub = document.getElementById('upbox');
+    H.db = document.getElementById('dashbtn');
+    H.dbB = H.db ? H.db.querySelector('b') : null;
+    H.sb = document.getElementById('spinbtn');
+    H.sbB = H.sb ? H.sb.querySelector('b') : null;
+  }
+  /* M5c：血条可见性由主循环兜底（原版 start/reset 时序不稳导致偶尔不显示） */
+  if ((state === 'playing' || state === 'levelup') && H.hpbox) {
+    if (!H.hpbox.classList.contains('on')) { H.hpbox.classList.add('on'); H.on = true; }
+  }
+  if (H.coin) { const t = fmt(S.coins + V.coinsRun); if (t !== H.coinT) { H.coin.textContent = t; H.coinT = t; } }
+  if (H.combo) { const t = '' + V.combo; if (t !== H.comboT) { H.combo.textContent = t; H.comboT = t; } }
+  if (H.lv) { const t = 'Lv.' + V.lvl; if (t !== H.lvT) { H.lv.textContent = t; H.lvT = t; } }
+  /* M4：左下角血条 + 已选进化技能 */
+  if (H.hf) {
+    const w = (V.hp / V.maxHp * 100) + '%';
+    if (w !== H.hfW) { H.hf.style.width = w; H.hfW = w; }
+    const txt = Math.ceil(V.hp) + ' / ' + V.maxHp;
+    if (txt !== H.numT) {
+      if (H.num) H.num.textContent = txt;
+      if (H.num2) H.num2.textContent = txt;
+      H.numT = txt;
+    }
+  }
+  if (H.ub) {
+    let html = '';
+    for (const u of UPGRADES) {
+      const n = V.up[u.id] || 0;
+      if (n > 0) html += '<div class="upic">' + u.ic + (n > 1 ? '<span>' + n + '</span>' : '') + '</div>';
+    }
+    if (html !== H.ubH) { H.ub.innerHTML = html; H.ubH = html; }
+  }
+  if (H.db && H.dbB) {
+    /* M6：皮肤专属技能按钮文案（无技能皮肤保持「冲刺」） */
+    const skl = M6_SKILLS[S.equipped];
+    let txt, cd;
+    if (skl && skl.kind === 'clear') {
+      cd = (V.clearCd || 0) > 0;
+      txt = cd ? '' + Math.ceil(V.clearCd) : skl.btn;
+    } else if (skl && skl.kind === 'shrink' && V.m6ShrinkT > 0) {
+      /* M12b：缩小生效中显示剩余秒数（此时冷却还没开始） */
+      cd = true; txt = Math.ceil(V.m6ShrinkT) + 's';
+    } else if (V.dashCd > 0) {
+      cd = true; txt = V.dashCd.toFixed(1);
+    } else { cd = false; txt = skl ? skl.btn : '冲刺'; }
+    if (txt !== H.dbT) { H.dbB.textContent = txt; H.dbT = txt; }
+    if (cd !== H.dbCd) { H.db.classList.toggle('cd', cd); H.dbCd = cd; }
+  }
+  /* M5：旋转水波技能按钮冷却 */
+  if (H.sb && H.sbB) {
+    const cd = V.spinCd > 0;
+    const txt = cd ? '' + Math.ceil(V.spinCd) : '水波';
+    if (txt !== H.sbT) { H.sbB.textContent = txt; H.sbT = txt; }
+    if (cd !== H.sbCd) { H.sb.classList.toggle('cd', cd); H.sbCd = cd; }
   }
 }
 
@@ -2064,6 +3358,16 @@ updateShopCoin();
 (async function initCloud() {
   if (!CLOUD) return;
   try {
+    /* M8：微信授权回跳处理 —— URL 带 code+provider=wechat 时自动换取会话 */
+    try {
+      const q = new URLSearchParams(location.search);
+      if (q.get('code') && (q.get('provider') === 'wechat' || q.get('provider_id') === 'custom-oauth')) {
+        const r = await cloudTimeout(CLOUD.auth.handleWechatWebCallback(), 12000, 'wxcallback');
+        history.replaceState(null, '', location.pathname);   // 清掉回跳参数，刷新后不重放
+        if (r && r.error) toast('微信登录失败：' + (r.error.message || '授权换取失败'));
+        else { await refreshCloudUser(); renderLoginBadge(); toast('微信登录成功', true); }
+      }
+    } catch (e) { }
     await refreshCloudUser();
     renderLoginBadge();
   } catch (e) { }
@@ -2071,9 +3375,16 @@ updateShopCoin();
 
 /* ---- 调试出口（便于自动化测试，不影响游戏）---- */
 window.__v2 = {
-  get V(){ return V; }, get S(){ return S; },
+  get V(){ return V; }, get S(){ return S; }, get player(){ return player; },
   SKINS, UPGRADES, BOSS_DEFS,
-  tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice,
+  tryDash, spawnBoss, defeatBoss, gainExp, skinById, renderShop, playBossVoice, playStartJingle,
+  damageBoss, trySpinAttack, hitPlayer, applyLv,
+  get invincibleUntil() { return invincibleUntil; },
+  __forceInvuln(ms) { invincibleUntil = performance.now() + ms; },
+  M6_SKILLS, get m6Shots() { return V ? V.m6Shots : []; },
+  get fishCount() { return (typeof fishes !== 'undefined' && fishes) ? fishes.length : -1; },
+  get clearCd() { return V ? (V.clearCd || 0) : 0; },
+  m6StartSkill, m6ClearScreen, tryDashCore, eatOrb,
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
   get cloudUser() { return cloudUser; },
