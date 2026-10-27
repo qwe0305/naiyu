@@ -398,3 +398,10 @@ commit e1fa04c，已发布线上。
 - __v2 新增导出 eatOrb（调试用）
 - 测试：方块数 3/4/5、moyu 150→75、math 200→100、10s 重生、清屏视野内清/视野外留，全部通过
 - 同步脚本 _sync9.py / 测试页 _mk9.py（已入仓）
+
+
+## M10（commit 745f10b，2026-10-27）
+- 修复手机端「拖动移动误触攻击技能」：原先 tapAttack 在 touchstart 上起 300ms 定时器，玩家按住屏幕拖动移动必然触发水波
+- 改法：触摸改为 touchend 判定 —— 位移 < 16px（TAP_MAX_MOVE）且时长 < 230ms（TAP_MAX_MS）才算一次点按；拖动/长按一律不触发技能
+- 点按仍保留原双判定：280ms 内第二下 = 冲刺，否则 300ms 后 = 水波；桌面鼠标路径不变（600ms 内合成 mousedown 去重）
+- 模拟触摸实测：拖动 spinT=0/dashCd=0；快速点按 spinT>0；长按 300ms spinT=0；双击 dashCd=8.99 且 spinT=0

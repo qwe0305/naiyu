@@ -1098,10 +1098,10 @@ const UPGRADES = [
   { id: 'magnet', ic: '◎', name: '吸星',     d: '附近小鱼自动被吸过来' },
   { id: 'devour', ic: '▲', name: '暴食',     d: '能吃掉更大的奶龙' },
   { id: 'combo',  ic: '✦', name: '连击大师', d: '吃鱼积分 ×2 / ×3 / ×4' },
-  { id: 'vigor',  ic: '✚', name: '疗愈',     d: '立刻回复 20 滴血 + 3 秒无敌' },
+  { id: 'vigor',  ic: '✚', name: '疗愈',     d: '立刻回复 30 滴血 + 3 秒无敌' },
   { id: 'charge', ic: '↻', name: '闪充',     d: '技能冷却 −2 秒' },
   { id: 'harvest', ic: '✳', name: '丰收',    d: '每次吃鱼额外 +1 经验' },
-  { id: 'wave',   ic: '〜', name: '水波强化', d: '水波每次伤害 +5 滴' }
+  { id: 'wave',   ic: '〜', name: '水波强化', d: '水波每次伤害 +7 滴' }
 ];
 
 let V = null;   // v2 局内状态
@@ -1141,14 +1141,14 @@ newV();
 const BOSS_SIZE = 112;          // 三个 Boss 体型统一
 const BOSS_DEFS = [
   { key: 'dj', name: '袋鼠 DJ', sub: '音响三兄弟', orb: '音响', orbIc: '♪', orbC: '#ff4d6d',
-    sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 20, hp: 100, reward: 100, orbCoin: 30,
+    sprite: 'BOSS_IMG', r: BOSS_SIZE, speed: 42, atkCd: 5, atk: 'ring', dmg: 14, hp: 80, reward: 100, orbCoin: 30,
     line: '◆ 袋鼠 DJ 登场！吃掉它的 3 个音响！' },
   { key: 'moyu', name: '魔芋爽辣王', sub: '辣味地狱', orb: '辣条', orbIc: '🌶', orbC: '#ff3b30',
-    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 10, hp: 150, reward: 200, orbCoin: 50,
-    line: '◆ 魔芋爽辣王来了！用旋转水波打掉它的 150 血！' },
+    sprite: BOSS2_SRC, r: BOSS_SIZE, speed: 50, atkCd: 2.9, atk: 'spread', dmg: 7, hp: 120, reward: 200, orbCoin: 50,
+    line: '◆ 魔芋爽辣王来了！用旋转水波打掉它的 120 血！' },
   { key: 'math', name: '高数压轴', sub: '期末第八版', orb: '课本', orbIc: '📖', orbC: '#4cc9f0',
-    sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 10, hp: 200, reward: 300, orbCoin: 80,
-    line: '◆ 高数压轴登场！小心它的函数引力线！撞掉它的 200 血！' }
+    sprite: BOSS3_SRC, r: BOSS_SIZE, speed: 58, atkCd: 4, atk: 'curve', dmg: 7, hp: 160, reward: 300, orbCoin: 80,
+    line: '◆ 高数压轴登场！小心它的函数引力线！撞掉它的 160 血！' }
 ];
 /* ---- M2：辣条子弹贴图（V2_LATIAO_SRC 由 HTML 素材块注入） ---- */
 const LATIAO_IMG = new Image();
@@ -1163,10 +1163,10 @@ if (typeof V2_INTEGRAL_SRC === 'string' && V2_INTEGRAL_SRC) INTEGRAL_IMG.src = V
 const MATH3 = {
   beamCd: 6,          // 拉人技能冷却（秒）
   beamSpeed: 150,     // 拉拽速度（px/s，放慢 → 拉拽时间更长，每秒扣血累计更多）
-  beamDps: 5,         // 拉拽期间每秒扣血
+  beamDps: 4,         // 拉拽期间每秒扣血（M11：5 → 4）
   pullStop: 150,      // 拉到距离 Boss 这么近停住（"课本"范围）
-  danmakuCd: 1.6,     // 弹幕波次间隔
-  danmakuDmg: 10,     // 每个积分号伤害
+  danmakuCd: 2,       // 弹幕波次间隔（M11：1.6 → 2.0）
+  danmakuDmg: 7,      // 每个积分号伤害（M11：10 → 7）
   danmakuSpd: 240     // 弹幕速度
 };
 
@@ -2017,16 +2017,18 @@ spinbtn.onclick = trySpinAttack;
    参考视频：海豹原地绕纵轴快速自转，身上缠出两条青色螺旋水带（前后分层产生缠绕感），
    伴随上升气泡与白色碎浪。近战范围：仅贴身小半径内 Boss 各扣 5 滴血。
    冷却 8 秒；单击与双击（冲刺）靠 300ms 停顿区分。 */
-const SPIN_ATK = { cd: 8, dmg: 5, dur: .75 };
+/* M11 平衡：原 5 伤害 / 8 秒冷却，打 Boss1 需要 20 次、约 160 秒，手感过苦。
+   调整为 12 伤害 / 5.5 秒冷却，命中半径略放宽，让水波成为真正能推进血线的主力技能 */
+const SPIN_ATK = { cd: 5.5, dmg: 12, dur: .78 };
 let tapTimer = 0;
 function trySpinAttack() {
   if (state !== 'playing' || !V || !player) return;
   if (V.spinCd > 0) return;
   V.spinCd = SPIN_ATK.cd;
   V.spinT = SPIN_ATK.dur;
-  const R = player.r * 2.2 + 36;          // 近战半径：贴身小范围
-  /* M6b：水波强化进化 —— 每级 +5 滴伤害 */
-  const dmg = SPIN_ATK.dmg + (V.up.wave || 0) * 5;
+  const R = player.r * 2.5 + 48;          // M11：近战半径略放宽（原 2.2r+36，贴脸才打得中）
+  /* M6b：水波强化进化 —— M11：每级 +7 滴伤害（原 +5） */
+  const dmg = SPIN_ATK.dmg + (V.up.wave || 0) * 7;
   sfx(560, .45, 'sine', .12, 160);
   sfx(300, .5, 'triangle', .07, 420);
   let hitCnt = 0;
@@ -2209,9 +2211,9 @@ function applyLv(id) {
   if (id === 'magnet') { u.magnet++; }
   if (id === 'devour') { u.devour++; }
   if (id === 'combo')  { u.combo++; }
-  /* M6b：疗愈 —— 改为回 20 滴血 + 短无敌（不再回满） */
+  /* M6b：疗愈 —— 改为回血 + 短无敌（不再回满）；M11：20 → 30 滴 */
   if (id === 'vigor')  {
-    V.hp = Math.min(V.maxHp, V.hp + 20);
+    V.hp = Math.min(V.maxHp, V.hp + 30);
     lives = 1; updateHud();
     invincibleUntil = Math.max(invincibleUntil, performance.now() + 3000);
   }
@@ -2331,10 +2333,10 @@ function updateBossOne(B, dt) {
       if (D.atk === 'ring') {
         const n = 1 + B.ph;
         for (let i = 0; i < n; i++) setTimeout(() => {
-          if (V && V.bosses.includes(B)) V.waves.push({ x: B.x, y: B.y, r: B.r * .5, sp: 300, dmg: 6 + B.ph * 2, a: 1, hit: false });
+          if (V && V.bosses.includes(B)) V.waves.push({ x: B.x, y: B.y, r: B.r * .5, sp: 300, dmg: 4 + B.ph * 1.5, a: 1, hit: false });
         }, i * 170);
       } else if (D.atk === 'spread') {
-        const n = 9 + B.ph * 3, off = rnd(0, TAU);
+        const n = 7 + B.ph * 2, off = rnd(0, TAU);   /* M11：9+3ph → 7+2ph，手机屏上弹幕不再密不透风 */
         for (let i = 0; i < n; i++) {
           const a = off + i / n * TAU;
           V.bullets.push({ x: B.x, y: B.y, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210,
@@ -2673,8 +2675,9 @@ function hitPlayer(dmg, fromBoss) {
   if (V.bosses) for (const B of V.bosses) if (B.beam) B.beamStop = 1;
   updateHud();
   if (V.hp <= 0) return endGame(false);
-  player.r = Math.max(START_SIZE, player.r * (fromBoss ? 0.9 : 0.95));
-  invincibleUntil = now + 1800;
+  /* M11：受击惩罚减轻 —— Boss 撞击只缩 6%、被鱼咬缩 3%（原 10% / 5%） */
+  player.r = Math.max(START_SIZE, player.r * (fromBoss ? 0.94 : 0.97));
+  invincibleUntil = now + 2400;        /* M11：无敌 1.8s → 2.4s */
 }
 
 /* ------------------------------------------------------------ 10. 钩子 */
