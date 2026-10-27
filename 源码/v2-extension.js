@@ -368,13 +368,40 @@ window.addEventListener('pagehide', () => { if (_sDirty) m8WriteNow(); });
 setInterval(() => { if (_sDirty) m8WriteNow(); }, 10000);    /* 长局保险丝 */
 
 /* ------------------------------------------------------------ 2.5 云服务：登录 + 排行榜 */
+/* M14：endpoint 不再写死。云网关按 Origin 精确校验（publishableKey 绑定到具体应用），
+   写死别的域名会被 403 "the request origin is not allowed for this client"；
+   留空后 SDK 自动回落到 location.origin，换域名/本地预览都不会指错后端。 */
 const CLOUD = (typeof WorkBuddyCloud !== 'undefined' && WorkBuddyCloud.createWorkBuddyCloud)
   ? WorkBuddyCloud.createWorkBuddyCloud({
-      endpoint: 'https://shenjin-seal.app.workbuddy.host',
       oauthRelayBaseUrl: 'https://www.workbuddy.cn/v2/as/genie-baas/oauth',
       publishableKey: 'wbpk_Ix6GMyqXuLEc6KGYCRI2H9_63rfvkMY6hAJdzxxaGJfGIc9anWHl1OY'
     })
   : null;
+
+/* 云网关错误 → 人话。换域名后最常见的两种：403 origin 不匹配、OAuth 应用没绑云服务 */
+function cloudErrText(e, fallback) {
+  const m = String((e && (e.message || e.error_description || e.error)) || e || '');
+  if (/origin is not allowed|access_denied/i.test(m)) return '云服务未就绪（当前域名未绑定云服务）';
+  if (/no cloud service bound|enable cloud service/i.test(m)) return '微信登录未开通（当前应用还没绑定云服务）';
+  if (/local addresses|absolute https/i.test(m)) return '本地预览不支持微信登录，请用线上地址打开';
+  if (/timeout/i.test(m)) return '网络超时，请稍后重试';
+  return m || fallback || '未知错误';
+}
+
+/* M14：预检微信授权地址。中转站允许跨域读取错误体，能在跳转前就问清楚
+   「这个域名有没有绑云服务」，而不是把用户甩到一页 JSON 报错上。
+   正常情况中转站 302 到 open.weixin.qq.com，fetch 拿到 opaqueredirect → 视为可用。 */
+async function wxPreflight(url) {
+  try {
+    const res = await fetch(url, { method: 'GET', mode: 'cors', redirect: 'manual', credentials: 'omit' });
+    if (res.type === 'opaqueredirect') return '';
+    let j = null;
+    try { j = await res.json(); } catch (e) { }
+    if (j && (j.error || j.error_description)) return cloudErrText(j, '授权服务返回异常');
+    if (res.status >= 400) return '授权服务返回 ' + res.status;
+    return '';
+  } catch (e) { return ''; }   /* 预检本身失败就不拦，交给真实跳转 */
+}
 
 let cloudUser = null;   // { name, avatarUrl } 当前登录用户（手机号）
 let lbOv = null;        // 排行榜弹窗 DOM
@@ -473,6 +500,7 @@ function openLogin() {
   phone.addEventListener('input', () => err(''));
 
   /* M8：微信登录 —— 跳转微信授权（由云服务 OAuth 中转站托管），回跳后自动换取会话 */
+  /* M14：跳转前先预检授权地址，把 409/400 这类服务端拦截翻译成人话显示在弹窗里 */
   ov.querySelector('#liWx').onclick = async () => {
     err('');
     if (!CLOUD || !CLOUD.auth.signInWithOAuth) { err('当前环境不支持微信登录'); return; }
@@ -481,11 +509,15 @@ function openLogin() {
     try {
       const redirectTo = location.origin + location.pathname;
       const r = await cloudTimeout(CLOUD.auth.signInWithOAuth({ provider: 'wechat', redirectTo }), 12000, 'wx');
-      if (r && r.error) { err('微信登录暂不可用：' + (r.error.message || '服务端未配置微信渠道')); wxBtn.disabled = false; return; }
+      if (r && r.error) { err('微信登录暂不可用：' + cloudErrText(r.error, '服务端未配置微信渠道')); wxBtn.disabled = false; return; }
+      const url = r && r.data && r.data.url;
+      if (!url) { err('微信登录暂不可用：没拿到授权地址'); wxBtn.disabled = false; return; }
+      const why = await wxPreflight(url);
+      if (why) { err('微信登录暂不可用：' + why); wxBtn.disabled = false; return; }
       /* 成功时 SDK 已重定向（或返回授权 URL），这里兜底手动跳 */
-      if (r && r.data && r.data.url) location.href = r.data.url;
+      location.href = url;
     } catch (e) {
-      err('微信登录暂不可用（' + (e.message || '网络异常') + '）');
+      err('微信登录暂不可用（' + cloudErrText(e, '网络异常') + '）');
       wxBtn.disabled = false;
     }
   };
@@ -497,7 +529,7 @@ function openLogin() {
     sendBtn.disabled = true;
     try {
       const sent = await CLOUD.auth.sendOtp({ phone: p });
-      if (sent.error) { err(sent.error.message || '验证码发送失败'); return; }
+      if (sent.error) { err('验证码发送失败：' + cloudErrText(sent.error, '请稍后重试')); return; }
       pendingOtp = { phone: p, verificationId: sent.data.verificationId, isExistingUser: sent.data.isExistingUser };
       err('验证码已发送，请查收短信');
       let n = 60;
@@ -520,7 +552,7 @@ function openLogin() {
       if (mode === 'in') {
         if (!pw) { err('请输入密码'); return; }
         const { data, error } = await CLOUD.auth.signInWithPassword({ phone: p, password: pw });
-        if (error) { err('登录失败：' + (error.message || '手机号或密码错误')); return; }
+        if (error) { err('登录失败：' + cloudErrText(error, '手机号或密码错误')); return; }
       } else {
         if (!pendingOtp || pendingOtp.phone !== p) { err('请先获取验证码'); return; }
         if (!code.value.trim()) { err('请输入短信验证码'); return; }
@@ -532,7 +564,7 @@ function openLogin() {
           token: code.value.trim(),
           password: pw,
         });
-        if (completed.error) { err(completed.error.message || '注册失败'); return; }
+        if (completed.error) { err('注册失败：' + cloudErrText(completed.error, '请稍后重试')); return; }
       }
       // 成功：刷新会话并进入
       pendingOtp = null;
@@ -3364,14 +3396,20 @@ updateShopCoin();
 (async function initCloud() {
   if (!CLOUD) return;
   try {
-    /* M8：微信授权回跳处理 —— URL 带 code+provider=wechat 时自动换取会话 */
+    /* M8：微信授权回跳处理 —— URL 带 code+state 时自动换取会话
+       M14：按 provider 分流（SDK 明确禁止用 handleWechatWebCallback 处理 provider_id=custom-oauth） */
     try {
       const q = new URLSearchParams(location.search);
-      if (q.get('code') && (q.get('provider') === 'wechat' || q.get('provider_id') === 'custom-oauth')) {
-        const r = await cloudTimeout(CLOUD.auth.handleWechatWebCallback(), 12000, 'wxcallback');
+      const code = q.get('code');
+      const isWx = q.get('provider') === 'wechat';
+      const isProvider = q.get('provider_id') === 'custom-oauth';
+      if (code && q.get('state') && (isWx || isProvider)) {
+        const r = await cloudTimeout(
+          isWx ? CLOUD.auth.handleWechatWebCallback() : CLOUD.auth.handleOAuthCallback(),
+          12000, 'wxcallback');
         history.replaceState(null, '', location.pathname);   // 清掉回跳参数，刷新后不重放
-        if (r && r.error) toast('微信登录失败：' + (r.error.message || '授权换取失败'));
-        else { await refreshCloudUser(); renderLoginBadge(); toast('微信登录成功', true); }
+        if (r && r.error) toast('微信登录失败：' + cloudErrText(r.error, '授权换取失败'));
+        else if (r && r.data) { await refreshCloudUser(); renderLoginBadge(); toast('微信登录成功', true); }
       }
     } catch (e) { }
     await refreshCloudUser();
@@ -3394,6 +3432,7 @@ window.__v2 = {
   get cam() { return cam; }, BOSS_SIZE,
   get voice() { return _bossVoice; }, get voiceSrcLen() { return BOSS_VOICE_SRC.length; },
   get cloudUser() { return cloudUser; },
-  cloudLogin, cloudLogout, fetchLeaderboard, reportEndlessScore
+  cloudLogin, cloudLogout, fetchLeaderboard, reportEndlessScore,
+  cloudErrText, wxPreflight, get cloudEndpoint() { return (CLOUD && CLOUD.auth && CLOUD.auth.baseUrl) || null; }
 };
 })();
