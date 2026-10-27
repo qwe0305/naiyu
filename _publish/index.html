@@ -1770,6 +1770,10 @@ function m6StartSkill() {
     player.r = Math.max(12, V.m6MinR * .55);   // M6b：比地图最小尺寸更小
     V.m6ShrinkT = 10;
     V.m6BubbleT = 4;
+    /* M12b：缩小持续 10 秒，冷却必须从「效果结束」才开始计时（原来技能一开始就转冷却，
+       持续时间与冷却完全重叠 → 10 秒一过技能立刻又能放）。这里先把冷却清零，
+       由 updateM6 在缩小结束时启动完整冷却。 */
+    V.dashCd = 0;
     /* M6b：变小期间 10 秒无敌金身（与缩小同步结束） */
     V.m6PreInvuln = invincibleUntil;
     invincibleUntil = performance.now() + 10000;
@@ -1862,7 +1866,9 @@ function updateM6(dt) {
       player.r = V.m6PreR;
       /* 金身随缩小一起结束（只回收本技能给的那段无敌，不覆盖其他来源的无敌） */
       try { invincibleUntil = Math.min(invincibleUntil, performance.now() + 800); } catch (e) { }
-      toast('终于缓过来了，变回原来的大小', true);
+      /* M12b：冷却从技能效果结束才开始（闪充仍然生效） */
+      V.dashCd = Math.max(4, 10 - (V.up.charge || 0) * 2);
+      toast('终于缓过来了，变回原来的大小（技能进入冷却）', true);
     }
   }
   /* 吃/喝回血：道具递到嘴边（动画中点）时生效一次 */
@@ -2251,24 +2257,44 @@ function spawnBoss(i) {
   V.bosses.push(boss);
   bossbar.classList.add('on');
   document.getElementById('bbname').textContent = def.name + ' · ' + def.sub;
-  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
+  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' 个';
   document.getElementById('bbfill').style.width = '100%';
   toast(def.line, true);
   playBossVoice();   /* Boss 出场音效 */
 }
 
+/* M12：Boss 血条 DOM 缓存 + 值变化才写 + 20Hz 节流（原来每帧 3 次 DOM 写触发样式重算） */
+const M12_BB = { fill: null, num: null, tag: null, name: null, w: '', n: '', tg: '', nm: '', at: 0 };
 function updateBoss(dt) {
   if (!V.bosses.length) return;
-  for (const B of V.bosses) updateBossOne(B, dt);
+  /* M12：迭代副本 —— updateBossOne 里吃方块会触发 defeatBoss 从数组里删 Boss，
+     直接 for...of 会在删除后跳过下一个元素（表现为某个 Boss 当帧僵住不动） */
+  for (const B of V.bosses.slice()) updateBossOne(B, dt);
   // 弹幕（全局，与单个 Boss 无关，但原逻辑放在 updateBoss 里，这里独立处理一次）
   updateBullets(dt);
+  if (!V.bosses.length) return;
+  const now2 = performance.now();
+  if (now2 - M12_BB.at < 50) return;
+  M12_BB.at = now2;
+  if (!M12_BB.fill || !M12_BB.fill.isConnected) {
+    M12_BB.fill = document.getElementById('bbfill');
+    M12_BB.num = document.getElementById('bbnum');
+    M12_BB.tag = document.getElementById('bbtag');
+    M12_BB.name = document.getElementById('bbname');
+  }
   /* M4：Boss 血条同步（血量最低者）+ 条内及时数字 */
   let low = V.bosses[0];
   for (const b of V.bosses) if (b.hp / b.maxHp < low.hp / low.maxHp) low = b;
-  document.getElementById('bbfill').style.width = (low.hp / low.maxHp * 100).toFixed(1) + '%';
-  const bn = document.getElementById('bbnum');
-  if (bn) bn.textContent = Math.ceil(low.hp) + ' / ' + low.maxHp;
-  document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
+  /* M12b：名称要跟着血条对应的 Boss 走（原来只在出场时写一次，
+     多 Boss 同场时会出现「名字是高数压轴，数字却是 DJ 的 80/80」） */
+  const nm = low.def.name + ' · ' + low.def.sub;
+  if (nm !== M12_BB.nm) { if (M12_BB.name) M12_BB.name.textContent = nm; M12_BB.nm = nm; }
+  const w = (low.hp / low.maxHp * 100).toFixed(1) + '%';
+  if (w !== M12_BB.w) { if (M12_BB.fill) M12_BB.fill.style.width = w; M12_BB.w = w; }
+  const n = Math.ceil(low.hp) + ' / ' + low.maxHp;
+  if (n !== M12_BB.n) { if (M12_BB.num) M12_BB.num.textContent = n; M12_BB.n = n; }
+  const tg = '剩 ' + V.bosses.length + ' 个';
+  if (tg !== M12_BB.tg) { if (M12_BB.tag) M12_BB.tag.textContent = tg; M12_BB.tg = tg; }
 }
 function updateBossOne(B, dt) {
   const D = B.def;
@@ -2569,7 +2595,7 @@ function defeatBoss(B) {
     }
   } else {
     // 还有 Boss 在场：更新 bossbar 计数
-    document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' / ' + V.bosses.length;
+    document.getElementById('bbtag').textContent = '剩 ' + V.bosses.length + ' 个';
   }
 }
 
@@ -2864,6 +2890,33 @@ const M8_SPOT = (function () {
   return cv;
 })();
 
+/* ============================================================ M12 性能优化
+   掉帧主因之二是 shadowBlur：每次绘制都要做一遍高斯模糊，手机 GPU 上极贵。
+   方块的辉光、弹幕的光晕每帧加起来能有 20+ 次 shadowBlur（12 个方块 + 十几发弹幕）。
+   对策：按颜色预渲染一张柔光贴图并缓存，之后用 drawImage 叠加，视觉几乎无差。 */
+const M12_GLOW = {};
+function m12Glow(color) {
+  let cv = M12_GLOW[color];
+  if (cv) return cv;
+  cv = document.createElement('canvas'); cv.width = cv.height = 96;
+  const c2 = cv.getContext('2d');
+  let rgb = '160,220,255';
+  if (color && color[0] === '#') {
+    const h = color.length === 4
+      ? color[1] + color[1] + color[2] + color[2] + color[3] + color[3]
+      : color.slice(1, 7);
+    const n = parseInt(h, 16);
+    rgb = ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+  }
+  const g = c2.createRadialGradient(48, 48, 0, 48, 48, 48);
+  g.addColorStop(0, 'rgba(' + rgb + ',.62)');
+  g.addColorStop(.45, 'rgba(' + rgb + ',.26)');
+  g.addColorStop(1, 'rgba(' + rgb + ',0)');
+  c2.fillStyle = g; c2.fillRect(0, 0, 96, 96);
+  M12_GLOW[color] = cv;
+  return cv;
+}
+
 function drawV2Water(t) {
   /* --- 波光斑：预渲染贴图缩放绘制（M8：替代每帧 7 个径向渐变） --- */
   ctx.save();
@@ -3154,7 +3207,8 @@ function drawBossLayer(t) {
         k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       }
       ctx.closePath();
-      ctx.shadowColor = 'rgba(80,190,255,.9)'; ctx.shadowBlur = 16;
+      /* M12：只有最外圈做辉光模糊（原来 3 圈各做一次 shadowBlur，一圈涟漪 3 次高斯模糊） */
+      if (ring === 0) { ctx.shadowColor = 'rgba(80,190,255,.9)'; ctx.shadowBlur = 16; }
       ctx.strokeStyle = 'rgba(110,210,255,' + (.72 * aMul) + ')';
       ctx.lineWidth = (ring === 0 ? 6 : 3.5) * w.a + 1;
       ctx.stroke();
@@ -3207,8 +3261,14 @@ function drawBossLayer(t) {
     for (const o of B.orbs) {
       if (!o.alive) continue;
       const open = o.state === 'open', sr = o.r;
+      /* M12：辉光改用预渲染贴图（原为每帧 shadowBlur 12~24，方块多时开销明显） */
+      const gc = m12Glow(open ? '#6ee7a0' : D.orbC);
+      ctx.save();
+      ctx.globalAlpha = open ? .95 : .6;
+      const gs = sr * (open ? 6.4 : 5.2);
+      ctx.drawImage(gc, o.x - gs / 2, o.y - gs / 2, gs, gs);
+      ctx.restore();
       ctx.save(); ctx.translate(o.x, o.y); ctx.scale(1 + Math.sin(B.t * 8) * .05, 1 + Math.sin(B.t * 8) * .05);
-      ctx.shadowColor = open ? '#6ee7a0' : D.orbC; ctx.shadowBlur = open ? 24 : 12;
       ctx.fillStyle = open ? 'rgba(10,44,32,.95)' : 'rgba(30,16,24,.95)';
       const w = sr * 2.1, h = sr * 1.7, rr = sr * .34;
       ctx.beginPath();
@@ -3216,13 +3276,11 @@ function drawBossLayer(t) {
       ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, rr); ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, rr);
       ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, rr); ctx.closePath(); ctx.fill();
       ctx.lineWidth = 2.5; ctx.strokeStyle = open ? '#6ee7a0' : D.orbC; ctx.stroke();
-      ctx.shadowBlur = 0;
       /* 核心物上方飘的图标：袋鼠 DJ 换成「外卖袋」贴图，其余 Boss 沿用符号 */
       if (D.key === 'dj' && ORB_IMG.complete && ORB_IMG.naturalWidth) {
         const ih = sr * 2.35, iw = ih * (ORB_IMG.naturalWidth / ORB_IMG.naturalHeight);
         ctx.save();
         ctx.globalAlpha = open ? 1 : .94;
-        if (open) { ctx.shadowColor = '#6ee7a0'; ctx.shadowBlur = 22; }
         ctx.drawImage(ORB_IMG, -iw / 2, -sr * 2.02 - ih / 2, iw, ih);
         ctx.restore();
       } else if (D.key === 'moyu' && LATIAO_IMG.complete && LATIAO_IMG.naturalWidth) {
@@ -3230,7 +3288,6 @@ function drawBossLayer(t) {
         const ih = sr * 2.1, iw = ih * (LATIAO_IMG.naturalWidth / LATIAO_IMG.naturalHeight);
         ctx.save();
         ctx.globalAlpha = open ? 1 : .94;
-        if (open) { ctx.shadowColor = '#6ee7a0'; ctx.shadowBlur = 22; }
         ctx.drawImage(LATIAO_IMG, -iw / 2, -sr * 2.02 - ih / 2, iw, ih);
         ctx.restore();
       } else {
@@ -3273,10 +3330,14 @@ function drawBossLayer(t) {
   for (const b of V.bullets) {
     if (b.integral && INTEGRAL_IMG.complete && INTEGRAL_IMG.naturalWidth) {
       const ih = b.r * 3.1, iw = ih * (INTEGRAL_IMG.naturalWidth / INTEGRAL_IMG.naturalHeight);
+      /* M12：辉光改预渲染贴图（原 shadowBlur 12 每发都做一次模糊） */
+      const gs = b.r * 7;
+      ctx.save(); ctx.globalAlpha = .75;
+      ctx.drawImage(m12Glow('#78d2ff'), b.x - gs / 2, b.y - gs / 2, gs, gs);
+      ctx.restore();
       ctx.save();
       ctx.translate(b.x, b.y);
       ctx.rotate(b.spin || 0);
-      ctx.shadowColor = 'rgba(120,210,255,.8)'; ctx.shadowBlur = 12;
       ctx.drawImage(INTEGRAL_IMG, -iw / 2, -ih / 2, iw, ih);
       ctx.restore();
     } else if (LATIAO_IMG.complete && LATIAO_IMG.naturalWidth) {
@@ -3287,9 +3348,12 @@ function drawBossLayer(t) {
       ctx.drawImage(LATIAO_IMG, -iw / 2, -ih / 2, iw, ih);
       ctx.restore();
     } else {
-      ctx.save(); ctx.shadowColor = b.c; ctx.shadowBlur = 14;
+      const gs = b.r * 5;
+      ctx.save(); ctx.globalAlpha = .85;
+      ctx.drawImage(m12Glow(b.c), b.x - gs / 2, b.y - gs / 2, gs, gs);
+      ctx.restore();
+      ctx.save();
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fillStyle = b.c; ctx.fill();
-      ctx.shadowBlur = 0;
       ctx.beginPath(); ctx.arc(b.x - b.r * .28, b.y - b.r * .3, b.r * .34, 0, TAU);
       ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
       ctx.restore();
@@ -3464,6 +3528,26 @@ function drawBossIndicator(now) {
 /* ---- 扣血 / 低血量特效 -----------------------------------------------------
    ① 受伤瞬间：全屏红色渐变闪一下（hurtFlash 衰减）
    ② 只剩 1 颗心且非地狱难度：屏幕四周持续红色渐晕，像「残血警告」 */
+/* M12：低血红晕预渲染 —— 原来残血时每帧都要 createRadialGradient + 两次全屏填充
+   （全屏渐变填充在手机上是实打实的带宽开销），改成一次性画好贴图，之后只做一次 drawImage */
+const M12_VIG = { w: 0, h: 0, cv: null };
+function m12Vignette() {
+  const vw = innerWidth, vh = innerHeight;
+  if (M12_VIG.w === vw && M12_VIG.h === vh && M12_VIG.cv) return M12_VIG.cv;
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, vw); cv.height = Math.max(1, vh);
+  const c2 = cv.getContext('2d');
+  const r = Math.hypot(vw, vh) * .55;
+  const g = c2.createRadialGradient(vw / 2, vh / 2, r * .2, vw / 2, vh / 2, r);
+  g.addColorStop(0, 'rgba(220,20,20,0)');
+  g.addColorStop(0.5, 'rgba(205,15,15,.45)');
+  g.addColorStop(0.8, 'rgba(190,10,10,.8)');
+  g.addColorStop(1, 'rgba(150,5,5,1)');
+  c2.fillStyle = g; c2.fillRect(0, 0, vw, vh);
+  c2.fillStyle = 'rgba(255,30,30,.18)'; c2.fillRect(0, 0, vw, vh);
+  M12_VIG.w = vw; M12_VIG.h = vh; M12_VIG.cv = cv;
+  return cv;
+}
 function drawHurtFx(now, dt) {
   if (!V) return;
   if (V.hurtFlash > 0) V.hurtFlash = Math.max(0, V.hurtFlash - dt * 1.6);
@@ -3493,17 +3577,10 @@ function drawHurtFx(now, dt) {
   // ② 低血量持续渐晕：四周红色晕圈（明显脉动 + 轻微全屏泛红）
   if (lowHp) {
     const pulse = 0.72 + Math.sin(now / 240) * 0.2;       // 强呼吸脉动
-    const r = Math.hypot(vw, vh) * .55;
-    const g = ctx.createRadialGradient(vw / 2, vh / 2, r * .2, vw / 2, vh / 2, r);
-    g.addColorStop(0, 'rgba(220,20,20,0)');
-    g.addColorStop(0.5, 'rgba(205,15,15,' + (pulse * .45) + ')');
-    g.addColorStop(0.8, 'rgba(190,10,10,' + (pulse * .8) + ')');
-    g.addColorStop(1, 'rgba(150,5,5,' + Math.min(1, pulse * 1.15) + ')');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, vw, vh);
-    // 全屏泛红，随脉动呼吸
-    ctx.fillStyle = 'rgba(255,30,30,' + (pulse * .18) + ')';
-    ctx.fillRect(0, 0, vw, vh);
+    /* M12：贴图 + globalAlpha，替代每帧两次全屏渐变填充 */
+    ctx.globalAlpha = Math.min(1, pulse);
+    ctx.drawImage(m12Vignette(), 0, 0, vw, vh);
+    ctx.globalAlpha = 1;
   }
 
   ctx.restore();
@@ -3618,47 +3695,83 @@ function updateV2(dt, now) {
   updateBoss(dt);
 }
 
+/* M12：HUD 全量重写为「缓存节点 + 值变化才写 + 15Hz 节流」。
+   原来每帧 10 次 getElementById + 十余次 textContent/style 赋值，
+   在手机上等于每帧强制一次样式重算（掉帧的主要嫌疑之一）。 */
+const M12_HUD = {
+  hpbox: null, coin: null, combo: null, lv: null, hf: null, num: null, num2: null,
+  ub: null, db: null, dbB: null, sb: null, sbB: null,
+  on: false, coinT: '', comboT: '', lvT: '', hfW: '', numT: '', ubH: '',
+  dbT: '', dbCd: null, sbT: '', sbCd: null, at: 0
+};
 function updateHUD2() {
   if (!V) return;
-  /* M5c：血条可见性由主循环每帧兜底（原版 start/reset 时序不稳导致偶尔不显示） */
-  if (state === 'playing' || state === 'levelup') hpbox.classList.add('on');
-  const c = document.getElementById('v2coin'); if (c) c.textContent = fmt(S.coins + V.coinsRun);
-  const cm = document.getElementById('v2combo'); if (cm) cm.textContent = V.combo;
-  const lt = document.getElementById('lvt'); if (lt) lt.textContent = 'Lv.' + V.lvl;
-  /* M4：左下角血条 + 已选进化技能 */
-  const hf = document.getElementById('hpfill');
-  if (hf) {
-    hf.style.width = (V.hp / V.maxHp * 100) + '%';
-    const txt = Math.ceil(V.hp) + ' / ' + V.maxHp;
-    const num = document.getElementById('hpnum'); if (num) num.textContent = txt;
-    const num2 = document.getElementById('hpnum2'); if (num2) num2.textContent = txt;
+  const now = performance.now();
+  if (now - M12_HUD.at < 66) return;         // 15Hz，HUD 信息量足够
+  M12_HUD.at = now;
+  const H = M12_HUD;
+  if (!H.hf || !H.hf.isConnected) {
+    H.hpbox = document.getElementById('hpbox');
+    H.coin = document.getElementById('v2coin');
+    H.combo = document.getElementById('v2combo');
+    H.lv = document.getElementById('lvt');
+    H.hf = document.getElementById('hpfill');
+    H.num = document.getElementById('hpnum');
+    H.num2 = document.getElementById('hpnum2');
+    H.ub = document.getElementById('upbox');
+    H.db = document.getElementById('dashbtn');
+    H.dbB = H.db ? H.db.querySelector('b') : null;
+    H.sb = document.getElementById('spinbtn');
+    H.sbB = H.sb ? H.sb.querySelector('b') : null;
   }
-  const ub = document.getElementById('upbox');
-  if (ub) {
+  /* M5c：血条可见性由主循环兜底（原版 start/reset 时序不稳导致偶尔不显示） */
+  if ((state === 'playing' || state === 'levelup') && H.hpbox) {
+    if (!H.hpbox.classList.contains('on')) { H.hpbox.classList.add('on'); H.on = true; }
+  }
+  if (H.coin) { const t = fmt(S.coins + V.coinsRun); if (t !== H.coinT) { H.coin.textContent = t; H.coinT = t; } }
+  if (H.combo) { const t = '' + V.combo; if (t !== H.comboT) { H.combo.textContent = t; H.comboT = t; } }
+  if (H.lv) { const t = 'Lv.' + V.lvl; if (t !== H.lvT) { H.lv.textContent = t; H.lvT = t; } }
+  /* M4：左下角血条 + 已选进化技能 */
+  if (H.hf) {
+    const w = (V.hp / V.maxHp * 100) + '%';
+    if (w !== H.hfW) { H.hf.style.width = w; H.hfW = w; }
+    const txt = Math.ceil(V.hp) + ' / ' + V.maxHp;
+    if (txt !== H.numT) {
+      if (H.num) H.num.textContent = txt;
+      if (H.num2) H.num2.textContent = txt;
+      H.numT = txt;
+    }
+  }
+  if (H.ub) {
     let html = '';
     for (const u of UPGRADES) {
       const n = V.up[u.id] || 0;
       if (n > 0) html += '<div class="upic">' + u.ic + (n > 1 ? '<span>' + n + '</span>' : '') + '</div>';
     }
-    if (ub._html !== html) { ub.innerHTML = html; ub._html = html; }
+    if (html !== H.ubH) { H.ub.innerHTML = html; H.ubH = html; }
   }
-  const db = document.getElementById('dashbtn');
-  if (db) {
+  if (H.db && H.dbB) {
     /* M6：皮肤专属技能按钮文案（无技能皮肤保持「冲刺」） */
     const skl = M6_SKILLS[S.equipped];
-    /* M7：清屏技能显示独立 60 秒冷却 */
+    let txt, cd;
     if (skl && skl.kind === 'clear') {
-      if ((V.clearCd || 0) > 0) { db.classList.add('cd'); db.querySelector('b').textContent = Math.ceil(V.clearCd); }
-      else { db.classList.remove('cd'); db.querySelector('b').textContent = skl.btn; }
-    }
-    else if (V.dashCd > 0) { db.classList.add('cd'); db.querySelector('b').textContent = V.dashCd.toFixed(1); }
-    else { db.classList.remove('cd'); db.querySelector('b').textContent = skl ? skl.btn : '冲刺'; }
+      cd = (V.clearCd || 0) > 0;
+      txt = cd ? '' + Math.ceil(V.clearCd) : skl.btn;
+    } else if (skl && skl.kind === 'shrink' && V.m6ShrinkT > 0) {
+      /* M12b：缩小生效中显示剩余秒数（此时冷却还没开始） */
+      cd = true; txt = Math.ceil(V.m6ShrinkT) + 's';
+    } else if (V.dashCd > 0) {
+      cd = true; txt = V.dashCd.toFixed(1);
+    } else { cd = false; txt = skl ? skl.btn : '冲刺'; }
+    if (txt !== H.dbT) { H.dbB.textContent = txt; H.dbT = txt; }
+    if (cd !== H.dbCd) { H.db.classList.toggle('cd', cd); H.dbCd = cd; }
   }
   /* M5：旋转水波技能按钮冷却 */
-  const sb = document.getElementById('spinbtn');
-  if (sb) {
-    if (V.spinCd > 0) { sb.classList.add('cd'); sb.querySelector('b').textContent = Math.ceil(V.spinCd); }
-    else { sb.classList.remove('cd'); sb.querySelector('b').textContent = '水波'; }
+  if (H.sb && H.sbB) {
+    const cd = V.spinCd > 0;
+    const txt = cd ? '' + Math.ceil(V.spinCd) : '水波';
+    if (txt !== H.sbT) { H.sbB.textContent = txt; H.sbT = txt; }
+    if (cd !== H.sbCd) { H.sb.classList.toggle('cd', cd); H.sbCd = cd; }
   }
 }
 
