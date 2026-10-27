@@ -1586,9 +1586,8 @@ function tapDash(e) {
 const spinbtn = el('div', 'spinbtn', null, '<div style="display:grid;place-items:center"><b>水波</b><span>单击屏幕</span></div>');
 document.body.appendChild(spinbtn);
 spinbtn.onclick = trySpinAttack;
-/* M6b 修复 BUG1：tapAttack 现在只在游戏中且未点到 UI 时生效，这里注册监听 */
-addEventListener('touchstart', tapAttack, { passive: true });
-addEventListener('mousedown', tapAttack);
+/* M6b 修复 BUG1 / M10：tapAttack 只在游戏中且未点到 UI 时生效；
+   触摸监听改到下方（touchend 判定），此处只保留桌面鼠标。 */
 
 /* ------------------------------------------------------------ 7.5 旋转水波（M5b 近战攻击技能）
    参考视频：海豹原地绕纵轴快速自转，身上缠出两条青色螺旋水带（前后分层产生缠绕感），
@@ -1665,17 +1664,20 @@ function drawSpinBubbles(pr) {
 }
 /* M6b 修复 BUG1：原来 tapAttack 无差别监听全局 mousedown/touchstart，
    点「开始游戏」、点进化卡、点商店/设置都会顺带触发水波。
-   现在只在「游戏中」且「没有点到任何 UI 控件」时才判定为单击屏幕。 */
+   现在只在「游戏中」且「没有点到任何 UI 控件」时才判定为单击屏幕。
+   M10：手机端「拖动移动误触攻击」修复 —— 触摸改为 touchend 判定，
+   必须「位移 < TAP_MAX_MOVE 且时长 < TAP_MAX_MS」才算点按；按住拖动只是移动。 */
+const TAP_MAX_MOVE = 16;     // 允许的手指抖动（CSS px）
+const TAP_MAX_MS = 230;      // 点按最长时长
+let tStartX = 0, tStartY = 0, tStartT = 0, tDragged = false, tOnUi = false;
+
 function isUiTarget(t) {
   if (!t || !t.closest) return false;
   return !!t.closest('#startScreen,#overScreen,#lvCards,#lvov,#shopOv,#setOv,.v2ov,#dashbtn,#spinbtn,#panel,#shopBtn,#diffPanel');
 }
-function tapAttack(e) {
-  if (state !== 'playing') return;               // 菜单/进化/结算界面：不触发任何战斗操作
-  if (isUiTarget(e.target)) return;              // 点在按钮/面板/卡牌上：交给控件自己处理
+/* 一次有效点按：280ms 内第二下 = 冲刺，否则 300ms 后 = 水波 */
+function handleTap() {
   const n = performance.now();
-  if (e.type === 'touchstart') lastTouchTap = n;
-  else if (n - lastTouchTap < 600) return;      // 触摸合成的 mousedown，跳过
   if (n - lastTap < 280) {                       // 双击 → 冲刺（取消挂起的单击攻击）
     clearTimeout(tapTimer); tapTimer = 0;
     tryDash(); lastTap = 0;
@@ -1688,6 +1690,31 @@ function tapAttack(e) {
     if (state === 'playing') trySpinAttack();     // 停顿期间若进了弹窗/结算，放弃这次攻击
   }, 300);
 }
+function tapAttack(e) {                          // 仅桌面鼠标走这里
+  if (state !== 'playing') return;               // 菜单/进化/结算界面：不触发任何战斗操作
+  if (isUiTarget(e.target)) return;              // 点在按钮/面板/卡牌上：交给控件自己处理
+  const n = performance.now();
+  if (n - lastTouchTap < 600) return;            // 触摸合成的 mousedown，跳过
+  handleTap();
+}
+/* 触摸三段式：按下记起点 → 移动超阈值标记为拖动 → 抬起时只有「快速轻点」才算点击 */
+addEventListener('touchstart', e => {
+  const t = e.touches && e.touches[0]; if (!t) return;
+  tStartX = t.clientX; tStartY = t.clientY; tStartT = performance.now();
+  tDragged = false; tOnUi = isUiTarget(e.target);
+}, { passive: true });
+addEventListener('touchmove', e => {
+  const t = e.touches && e.touches[0]; if (!t) return;
+  if (Math.hypot(t.clientX - tStartX, t.clientY - tStartY) > TAP_MAX_MOVE) tDragged = true;
+}, { passive: true });
+addEventListener('touchend', () => {
+  lastTouchTap = performance.now();              // 拦掉随后浏览器的合成 mousedown
+  if (tOnUi || tDragged) return;                 // 点 UI / 拖动移动 → 不触发技能
+  if (performance.now() - tStartT > TAP_MAX_MS) return;   // 长按 → 不算点击
+  if (state !== 'playing') return;
+  handleTap();
+}, { passive: true });
+addEventListener('mousedown', tapAttack);
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === ' ' || k === 'shift') { e.preventDefault(); trySpinAttack(); }
