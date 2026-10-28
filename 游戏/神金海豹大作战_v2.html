@@ -794,8 +794,10 @@ setInterval(() => { if (_sDirty) m8WriteNow(); }, 10000);    /* 长局保险丝 
 /* ------------------------------------------------------------ 2.5 云服务：登录 + 排行榜 */
 /* M14：endpoint 不再写死。云网关按 Origin 精确校验（publishableKey 绑定到具体应用），
    写死别的域名会被 403 "the request origin is not allowed for this client"；
-   留空后 SDK 自动回落到 location.origin，换域名/本地预览都不会指错后端。 */
-const CLOUD = (typeof WorkBuddyCloud !== 'undefined' && WorkBuddyCloud.createWorkBuddyCloud)
+   留空后 SDK 自动回落到 location.origin，换域名/本地预览都不会指错后端。
+   离线双击（file://）没有可用的 origin，直接不初始化，避免请求打到 file:/.cloud。 */
+const CLOUD_URL_OK = /^https?:$/.test(location.protocol);
+const CLOUD = (CLOUD_URL_OK && typeof WorkBuddyCloud !== 'undefined' && WorkBuddyCloud.createWorkBuddyCloud)
   ? WorkBuddyCloud.createWorkBuddyCloud({
       oauthRelayBaseUrl: 'https://www.workbuddy.cn/v2/as/genie-baas/oauth',
       publishableKey: 'wbpk_Ix6GMyqXuLEc6KGYCRI2H9_63rfvkMY6hAJdzxxaGJfGIc9anWHl1OY'
@@ -875,6 +877,7 @@ let pendingOtp = null;   // 已发送验证码的上下文 { phone, verification
 let otpTimer = null;     // 重发倒计时
 
 async function cloudLogin() {
+  if (!CLOUD_URL_OK) { toast('离线单机模式下不能登录，请用线上地址打开'); return; }
   if (!CLOUD) { toast('云服务未加载，请联网后重试'); return; }
   openLogin();
 }
@@ -1593,6 +1596,7 @@ async function refreshProfileStats() {
 
 /* ---- 排行榜弹窗 --------------------------------------------------------- */
 function openLeaderboard() {
+  if (!CLOUD_URL_OK) { toast('离线单机模式下没有排行榜，请用线上地址打开'); return; }
   if (!CLOUD) { toast('云服务未加载，请联网后重试'); return; }
   if (lbOv) { lbOv.classList.remove('hidden'); loadLb('star'); return; }
   const ov = el('div', 'lbOv', 'v2ov hidden');
